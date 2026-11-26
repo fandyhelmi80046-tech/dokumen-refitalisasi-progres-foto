@@ -174,15 +174,33 @@
 
             <!-- 2. NAVIGASI SUB-MENU RUANG / GEDUNG -->
             <section class="space-y-2.5">
-                <div class="flex items-center justify-between">
+                <div class="flex flex-wrap items-center justify-between gap-2">
                     <span class="text-xs font-extrabold text-slate-600 uppercase tracking-wider">Pilih Sub-Menu Ruang / Gedung</span>
-                    <button type="button" onclick="openAddRoomModal()"
-                        class="inline-flex items-center px-3 py-1.5 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white text-xs font-bold rounded-xl shadow-sm transition">
-                        <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
-                        </svg>
-                        Tambah Ruang/Gedung
-                    </button>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <button type="button" onclick="pushRoomsConfigToDrive(true)"
+                            class="inline-flex items-center px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold rounded-xl transition"
+                            title="Kirim Nama Sekolah & Daftar Ruang Perangkat Ini ke Google Drive">
+                            <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                            </svg>
+                            <span>Kirim Ruang</span>
+                        </button>
+                        <button type="button" onclick="pullRoomsConfigFromDrive(true)"
+                            class="inline-flex items-center px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold rounded-xl transition"
+                            title="Ambil Nama Sekolah & Daftar Ruang Terbaru dari Google Drive">
+                            <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            <span>Ambil Ruang</span>
+                        </button>
+                        <button type="button" onclick="openAddRoomModal()"
+                            class="inline-flex items-center px-3 py-1.5 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white text-xs font-bold rounded-xl shadow-sm transition">
+                            <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            Tambah Ruang/Gedung
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Horizontal Scrollable Pill Menu -->
@@ -763,11 +781,55 @@
             appState.schoolName = document.getElementById('school-name').value.trim() || 'Sekolah Sasaran';
             appState.reportDate = document.getElementById('report-date').value || new Date().toISOString().split('T')[0];
             saveStateToStorage();
+            clearTimeout(window.__syncIdentityTimer);
+            window.__syncIdentityTimer = setTimeout(() => pushRoomsConfigToDrive(false), 1200);
             renderRoomTabs();
             renderActiveRoomView();
             if (activeMainView === 'recap') {
                 renderRecapView();
             }
+        }
+
+        // ==========================================
+        // 3. MANAJEMEN DATA FOTO PER TANGGAL/RUANG/TAHAP
+        // ==========================================
+        function getRoomStagePhotos(dateStr, roomId, stageId) {
+            if (!appState.dailyLogs[dateStr]) appState.dailyLogs[dateStr] = {};
+            if (!appState.dailyLogs[dateStr][roomId]) appState.dailyLogs[dateStr][roomId] = {};
+            if (!appState.dailyLogs[dateStr][roomId][stageId]) appState.dailyLogs[dateStr][roomId][stageId] = {};
+            return appState.dailyLogs[dateStr][roomId][stageId];
+        }
+
+        function isRoomStageSubmitted(dateStr, roomId, stageId) {
+            return Boolean(
+                appState.submittedLogs &&
+                appState.submittedLogs[dateStr] &&
+                appState.submittedLogs[dateStr][roomId] &&
+                appState.submittedLogs[dateStr][roomId][stageId]
+            );
+        }
+
+        function setRoomStageSubmitted(dateStr, roomId, stageId, val) {
+            if (!appState.submittedLogs) appState.submittedLogs = {};
+            if (!appState.submittedLogs[dateStr]) appState.submittedLogs[dateStr] = {};
+            if (!appState.submittedLogs[dateStr][roomId]) appState.submittedLogs[dateStr][roomId] = {};
+            appState.submittedLogs[dateStr][roomId][stageId] = val;
+        }
+
+        function countCapturedInStage(dateStr, roomId, stageId) {
+            const photos = getRoomStagePhotos(dateStr, roomId, stageId);
+            const angles = getAnglesForRoom(roomId);
+            return angles.filter(a => photos[a.id] && photos[a.id].dataUrl).length;
+        }
+
+        function countVerifiedInStage(dateStr, roomId, stageId) {
+            const photos = getRoomStagePhotos(dateStr, roomId, stageId);
+            const angles = getAnglesForRoom(roomId);
+            return angles.filter(a => photos[a.id] && photos[a.id].dataUrl && photos[a.id].status === 'verified').length;
+        }
+
+        function countTotalCapturedInRoom(dateStr, roomId) {
+            return STAGE_DEFINITIONS.reduce((acc, st) => acc + countCapturedInStage(dateStr, roomId, st.id), 0);
         }
 
         function getActiveRoom() {
@@ -778,49 +840,16 @@
             return STAGE_DEFINITIONS.find(s => s.id === appState.activeStageId) || STAGE_DEFINITIONS[0];
         }
 
-        function isStageSubmitted(dateStr, roomId, stageId) {
-            return Boolean(
-                appState.submittedLogs &&
-                appState.submittedLogs[dateStr] &&
-                appState.submittedLogs[dateStr][roomId] &&
-                appState.submittedLogs[dateStr][roomId][stageId]
-            );
-        }
-
-        function setStageSubmitted(dateStr, roomId, stageId, isSubmitted) {
-            if (!appState.submittedLogs) appState.submittedLogs = {};
-            if (!appState.submittedLogs[dateStr]) appState.submittedLogs[dateStr] = {};
-            if (!appState.submittedLogs[dateStr][roomId]) appState.submittedLogs[dateStr][roomId] = {};
-            if (isSubmitted) {
-                appState.submittedLogs[dateStr][roomId][stageId] = true;
-            } else {
-                delete appState.submittedLogs[dateStr][roomId][stageId];
-            }
-        }
-
-        function getPhotosForStage(dateStr, roomId, stageId) {
-            if (!appState.dailyLogs[dateStr]) return {};
-            if (!appState.dailyLogs[dateStr][roomId]) return {};
-            return appState.dailyLogs[dateStr][roomId][stageId] || {};
-        }
-
-        function setPhotoForStage(dateStr, roomId, stageId, angleId, photoObj) {
-            if (!appState.dailyLogs[dateStr]) appState.dailyLogs[dateStr] = {};
-            if (!appState.dailyLogs[dateStr][roomId]) appState.dailyLogs[dateStr][roomId] = {};
-            if (!appState.dailyLogs[dateStr][roomId][stageId]) appState.dailyLogs[dateStr][roomId][stageId] = {};
-            appState.dailyLogs[dateStr][roomId][stageId][angleId] = photoObj;
-        }
-
         // ==========================================
-        // 2B. INTEGRASI UPLOAD KE GOOGLE DRIVE
+        // 4. KONEKSI GOOGLE DRIVE & SINKRONISASI RUANG
         // ==========================================
         function updateDriveStatusUI() {
             const dot = document.getElementById('drive-status-dot');
             if (!dot) return;
-            if (appState.driveWebAppUrl && appState.driveWebAppUrl.startsWith('https://script.google.com/')) {
-                dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0';
+            if (appState.driveWebAppUrl) {
+                dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shrink-0';
             } else {
-                dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0';
+                dot.className = 'w-2 h-2 rounded-full bg-amber-400 shrink-0';
             }
         }
 
@@ -838,6 +867,14 @@
             modal.classList.remove('flex');
         }
 
+        function clearDriveSettings() {
+            appState.driveWebAppUrl = '';
+            saveStateToStorage();
+            updateDriveStatusUI();
+            closeDriveSettingsModal();
+            showToast('Koneksi Google Drive diputuskan.', 'info');
+        }
+
         function saveDriveSettings() {
             const urlVal = document.getElementById('drive-webapp-url-input').value.trim();
             const autoVal = document.getElementById('drive-auto-upload-checkbox').checked;
@@ -852,334 +889,503 @@
             saveStateToStorage();
             updateDriveStatusUI();
             closeDriveSettingsModal();
-            showToast(urlVal ? 'Koneksi Google Drive disimpan!' : 'URL Google Drive dikosongkan.', 'success');
+            if (urlVal) {
+                pullRoomsConfigFromDrive(true);
+            } else {
+                showToast('URL Google Drive dikosongkan.', 'info');
+            }
         }
 
-        function clearDriveSettings() {
-            appState.driveWebAppUrl = '';
-            document.getElementById('drive-webapp-url-input').value = '';
-            saveStateToStorage();
-            updateDriveStatusUI();
-            closeDriveSettingsModal();
-            showToast('Koneksi Google Drive diputuskan.', 'info');
-        }
-
-        async function uploadStagePhotosToDrive(dateStr, roomId, stageId, forceAll = false) {
+        async function pushRoomsConfigToDrive(showNotif = false) {
             if (!appState.driveWebAppUrl) {
-                showToast('URL Google Drive belum diatur. Klik tombol Drive di kanan atas.', 'error');
-                openDriveSettingsModal();
-                return false;
+                if (showNotif) {
+                    showToast('Masukkan URL Web App di tombol Google Drive terlebih dahulu.', 'error');
+                    openDriveSettingsModal();
+                }
+                return;
+            }
+            if (showNotif) showToast('Mengirim Nama Sekolah & Daftar Ruang ke Google Drive...', 'info');
+            try {
+                const res = await fetch(appState.driveWebAppUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'saveConfig',
+                        config: {
+                            schoolName: appState.schoolName,
+                            rooms: appState.rooms,
+                            updatedAt: new Date().toISOString()
+                        }
+                    })
+                });
+                const result = await res.json();
+                if (result && result.status === 'success') {
+                    if (showNotif) showToast('Berhasil! Nama sekolah & daftar ruang tersimpan di Google Drive.', 'success');
+                } else {
+                    if (showNotif) showToast('Respon Drive tidak valid. Pastikan Apps Script sudah di-deploy ulang.', 'error');
+                }
+            } catch (err) {
+                console.warn('Gagal mengirim konfigurasi ruang ke Drive:', err);
+                if (showNotif) showToast('Gagal mengirim ke Google Drive. Periksa koneksi & URL Web App.', 'error');
+            }
+        }
+
+        async function pullRoomsConfigFromDrive(showNotif = false) {
+            if (!appState.driveWebAppUrl) {
+                if (showNotif) {
+                    showToast('Masukkan URL Web App di tombol Google Drive terlebih dahulu.', 'error');
+                    openDriveSettingsModal();
+                }
+                return;
             }
 
-            const room = appState.rooms.find(r => r.id === roomId) || getActiveRoom();
-            const stage = STAGE_DEFINITIONS.find(s => s.id === stageId) || getActiveStage();
-            const roomAngles = getAnglesForRoom(room.id);
-            const photosMap = getPhotosForStage(dateStr, room.id, stage.id);
+            if (showNotif) showToast('Mengambil daftar ruang dari Google Drive...', 'info');
 
-            const toUpload = roomAngles.filter(ang => {
-                const p = photosMap[ang.id];
-                if (!p) return false;
-                return forceAll ? true : !p.driveUploaded;
-            });
+            try {
+                const separator = appState.driveWebAppUrl.includes('?') ? '&' : '?';
+                const res = await fetch(`${appState.driveWebAppUrl}${separator}t=${Date.now()}`);
+                const data = await res.json();
+                if (data && data.status === 'success' && data.config) {
+                    if (data.config.schoolName) {
+                        appState.schoolName = data.config.schoolName;
+                        document.getElementById('school-name').value = appState.schoolName;
+                    }
+                    if (Array.isArray(data.config.rooms) && data.config.rooms.length > 0) {
+                        appState.rooms = data.config.rooms;
+                        if (!appState.rooms.some(r => r.id === appState.activeRoomId)) {
+                            appState.activeRoomId = appState.rooms[0].id;
+                        }
+                    }
+                    saveStateToStorage();
+                    renderRoomTabs();
+                    renderActiveRoomView();
+                    if (activeMainView === 'recap') {
+                        populateRecapRoomFilter();
+                        renderRecapView();
+                    }
+                    if (showNotif) showToast('Nama sekolah & daftar ruang berhasil diperbarui dari Google Drive!', 'success');
+                } else if (data && data.status === 'empty') {
+                    if (showNotif) showToast('Belum ada data ruang di Google Drive. Tekan "Kirim Ruang" di komputer dulu.', 'info');
+                } else {
+                    if (showNotif) showToast('Gagal membaca data Drive. Pastikan fungsi doGet(e) sudah di-deploy.', 'error');
+                }
+            } catch (err) {
+                console.warn('Gagal mengambil konfigurasi ruang dari Drive:', err);
+                if (showNotif) showToast('Gagal terhubung ke Apps Script. Pastikan deployment baru sudah dibuat.', 'error');
+            }
+        }
 
+        async function pullRoomsConfigFromDrive(showNotif = false) {
+            if (!appState.driveWebAppUrl) {
+                if (showNotif) {
+                    showToast('Masukkan URL Web App di tombol Google Drive terlebih dahulu.', 'error');
+                    openDriveSettingsModal();
+                }
+                return;
+            }
+
+            if (showNotif) showToast('Menyinkronkan daftar ruang dari Google Drive...', 'info');
+
+            try {
+                const res = await fetch(appState.driveWebAppUrl);
+                const data = await res.json();
+                if (data && data.status === 'success' && data.config) {
+                    if (data.config.schoolName) {
+                        appState.schoolName = data.config.schoolName;
+                        document.getElementById('school-name').value = appState.schoolName;
+                    }
+                    if (Array.isArray(data.config.rooms) && data.config.rooms.length > 0) {
+                        appState.rooms = data.config.rooms;
+                        if (!appState.rooms.some(r => r.id === appState.activeRoomId)) {
+                            appState.activeRoomId = appState.rooms[0].id;
+                        }
+                    }
+                    saveStateToStorage();
+                    renderRoomTabs();
+                    renderActiveRoomView();
+                    if (activeMainView === 'recap') {
+                        populateRecapRoomFilter();
+                        renderRecapView();
+                    }
+                    if (showNotif) showToast('Daftar ruang berhasil disinkronkan dari Google Drive!', 'success');
+                } else if (data && data.status === 'empty') {
+                    await pushRoomsConfigToDrive(showNotif);
+                }
+            } catch (err) {
+                console.warn('Gagal mengambil konfigurasi ruang dari Drive:', err);
+                if (showNotif) showToast('Gagal menyinkronkan ruang. Pastikan Apps Script sudah di-deploy versi baru.', 'error');
+            }
+        }
+
+        async function uploadStagePhotosToDrive(dateStr, roomId, stageId, isManualTrigger = false) {
+            if (!appState.driveWebAppUrl) {
+                if (isManualTrigger) {
+                    showToast('Masukkan URL Web App Google Drive terlebih dahulu.', 'error');
+                    openDriveSettingsModal();
+                }
+                return;
+            }
+
+            const room = appState.rooms.find(r => r.id === roomId) || { name: 'Ruang_Umum' };
+            const stage = STAGE_DEFINITIONS.find(s => s.id === stageId) || { title: 'Tahap_Harian' };
+            const angles = getAnglesForRoom(roomId);
+            const photos = getRoomStagePhotos(dateStr, roomId, stageId);
+
+            const toUpload = angles.filter(a => photos[a.id] && photos[a.id].dataUrl && (!photos[a.id].driveUploaded || isManualTrigger));
             if (toUpload.length === 0) {
-                showToast('Semua foto pada tahap ini sudah tersinkron di Google Drive.', 'info');
-                return true;
+                if (isManualTrigger) {
+                    showToast('Semua foto pada tahap ini sudah terunggah ke Google Drive.', 'info');
+                }
+                return;
             }
 
+            showToast(`Mengunggah ${toUpload.length} foto ke Google Drive...`, 'info');
             let successCount = 0;
-            for (let i = 0; i < toUpload.length; i++) {
-                const ang = toUpload[i];
-                const p = photosMap[ang.id];
-                showToast(`Mengunggah ke Drive (${i + 1}/${toUpload.length}): ${ang.shortTitle}...`, 'info');
 
-                const safeRoom = room.name.replace(/[^a-zA-Z0-9]/g, '_');
-                const safeAngle = ang.shortTitle.replace(/[^a-zA-Z0-9]/g, '_');
-                const fileName = `${dateStr}_${safeRoom}_${stage.id}_${safeAngle}.jpg`;
+            for (const ang of toUpload) {
+                const entry = photos[ang.id];
+                const cleanRoom = room.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+                const cleanAngle = ang.shortTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
+                const fileName = `${dateStr}_${cleanRoom}_${stageId}_${cleanAngle}.jpg`;
 
                 try {
-                    const response = await fetch(appState.driveWebAppUrl, {
+                    const res = await fetch(appState.driveWebAppUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify({
+                            action: 'uploadPhoto',
                             date: dateStr,
                             schoolName: appState.schoolName,
                             roomName: room.name,
                             stageTitle: stage.title,
                             angleTitle: ang.title,
-                            gps: p.gps,
-                            status: p.status === 'verified' ? 'Valid' : (p.status === 'rejected' ? 'Perlu Ulang' : 'Belum Cek'),
+                            gps: entry.gps || '-',
+                            status: entry.status === 'verified' ? 'Terverifikasi' : 'Menunggu Cek',
                             fileName: fileName,
-                            imageBase64: p.dataUrl
+                            imageBase64: entry.dataUrl
                         })
                     });
-
-                    const resJson = await response.json();
-                    if (resJson && resJson.status === 'success') {
-                        p.driveUploaded = true;
-                        p.driveUrl = resJson.fileUrl || '';
+                    const result = await res.json();
+                    if (result && result.status === 'success') {
+                        entry.driveUploaded = true;
+                        entry.driveUrl = result.fileUrl || '';
                         successCount++;
                     }
                 } catch (err) {
-                    console.error('Gagal upload ke Google Drive:', err);
+                    console.warn('Gagal unggah foto ke Drive:', err);
                 }
             }
 
             saveStateToStorage();
-            renderActiveRoomView();
-            if (activeMainView === 'recap') renderRecapView();
-
-            if (successCount === toUpload.length) {
-                showToast(`${successCount} foto berhasil diunggah ke Google Drive!`, 'success');
-                return true;
+            if (activeMainView === 'capture') {
+                renderActiveRoomView();
             } else {
-                showToast(`${successCount} dari ${toUpload.length} foto terunggah. Periksa koneksi internet/URL Script.`, 'error');
-                return false;
-            }
-        }
-
-        async function saveTodayProgressForActiveRoom() {
-            const room = getActiveRoom();
-            const stage = getActiveStage();
-            const targetDate = appState.reportDate;
-            const photosMap = getPhotosForStage(targetDate, room.id, stage.id);
-            const takenCount = Object.keys(photosMap).length;
-
-            if (takenCount === 0) {
-                showToast(`Ambil minimal 1 foto pada tahap "${stage.shortTitle}" sebelum menyimpan.`, 'error');
-                return;
+                renderRecapView();
             }
 
-            const btnSave = document.getElementById('btn-save-progress');
-            if (btnSave) btnSave.disabled = true;
-
-            if (appState.driveWebAppUrl && appState.driveAutoUpload) {
-                await uploadStagePhotosToDrive(targetDate, room.id, stage.id, false);
+            if (successCount > 0) {
+                showToast(`${successCount}/${toUpload.length} foto berhasil masuk ke Google Drive!`, 'success');
+            } else {
+                showToast('Gagal mengunggah ke Google Drive. Periksa URL Web App & koneksi.', 'error');
             }
-
-            if (btnSave) btnSave.disabled = false;
-
-            setStageSubmitted(targetDate, room.id, stage.id, true);
-            saveStateToStorage();
-            renderRoomTabs();
-            renderActiveRoomView();
-            showToast(`Progres "${room.name}" (${stage.shortTitle}) tersimpan ke Rekap Harian!`, 'success');
-        }
-
-        function editRoomFromRecap(dateStr, roomId, stageId = 'pagi') {
-            setStageSubmitted(dateStr, roomId, stageId, false);
-            appState.reportDate = dateStr;
-            appState.activeRoomId = roomId;
-            appState.activeStageId = stageId;
-            document.getElementById('report-date').value = dateStr;
-            saveStateToStorage();
-            switchMainView('capture');
-            showToast('Mode edit aktif: Silakan ubah atau tambah foto tahap ini.', 'info');
         }
 
         // ==========================================
-        // 3. JAM REAL-TIME & LOKASI GPS
+        // 5. JAM REAL-TIME & GPS GEOLOCATION
         // ==========================================
-        function getFormattedTimestamp() {
-            const now = new Date();
-            const dd = String(now.getDate()).padStart(2, '0');
-            const mm = String(now.getMonth() + 1).padStart(2, '0');
-            const yyyy = now.getFullYear();
-            const hh = String(now.getHours()).padStart(2, '0');
-            const min = String(now.getMinutes()).padStart(2, '0');
-            const ss = String(now.getSeconds()).padStart(2, '0');
-            return {
-                dateStr: `${dd}/${mm}/${yyyy}`,
-                timeStr: `${hh}:${min}:${ss}`,
-                fullStr: `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`
-            };
-        }
-
         function startLiveClock() {
             const update = () => {
-                const ts = getFormattedTimestamp();
+                const now = new Date();
+                const timeStr = now.toTimeString().split(' ')[0];
+                const dateStr = now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
                 const clockEl = document.getElementById('live-clock');
                 const dateEl = document.getElementById('live-date-badge');
-                const modalTimeEl = document.getElementById('modal-live-time');
-                if (clockEl) clockEl.textContent = ts.timeStr;
-                if (dateEl) dateEl.textContent = ts.dateStr;
-                if (modalTimeEl) modalTimeEl.textContent = ts.fullStr;
+                const modalTime = document.getElementById('modal-live-time');
+                if (clockEl) clockEl.textContent = timeStr;
+                if (dateEl) dateEl.textContent = dateStr;
+                if (modalTime) modalTime.textContent = `${dateStr} ${timeStr}`;
             };
             update();
             setInterval(update, 1000);
         }
 
-        function refreshGPS() {
-            const coordsEl = document.getElementById('gps-coords-text');
-            const accEl = document.getElementById('gps-accuracy-text');
-            const indEl = document.getElementById('gps-indicator');
+        function updateGPSUI() {
+            const ind = document.getElementById('gps-indicator');
+            const coords = document.getElementById('gps-coords-text');
+            const acc = document.getElementById('gps-accuracy-text');
+            const modalGps = document.getElementById('modal-live-gps');
 
-            if (!navigator.geolocation) {
-                coordsEl.textContent = 'GPS tidak didukung browser';
-                accEl.textContent = 'Gunakan tombol Simulasi untuk uji coba';
+            if (gpsState.status === 'locked' && gpsState.lat !== null) {
+                const coordStr = `${gpsState.lat.toFixed(6)}, ${gpsState.lng.toFixed(6)}`;
+                ind.className = 'w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0';
+                coords.textContent = coordStr;
+                acc.textContent = `Akurasi ±${Math.round(gpsState.accuracy || 5)} meter • Terkunci`;
+                if (modalGps) modalGps.textContent = `GPS: ${coordStr}`;
+            } else {
+                ind.className = 'w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0';
+                coords.textContent = 'Mengunci satelit GPS...';
+                acc.textContent = 'Pastikan izin lokasi aktif atau gunakan Simulasi';
+                if (modalGps) modalGps.textContent = 'GPS: Mengunci...';
+            }
+        }
+
+        function refreshGPS() {
+            if (!('geolocation' in navigator)) {
+                simulateGPS();
                 return;
             }
-
-            coordsEl.textContent = 'Mengunci satelit GPS...';
-            accEl.textContent = 'Meminta koordinat perangkat';
-            indEl.className = 'w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0';
-
+            gpsState.status = 'searching';
+            updateGPSUI();
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
-                    gpsState.lat = pos.coords.latitude.toFixed(6);
-                    gpsState.lng = pos.coords.longitude.toFixed(6);
-                    gpsState.accuracy = Math.round(pos.coords.accuracy);
+                    gpsState.lat = pos.coords.latitude;
+                    gpsState.lng = pos.coords.longitude;
+                    gpsState.accuracy = pos.coords.accuracy;
                     gpsState.status = 'locked';
                     updateGPSUI();
                 },
-                (err) => {
-                    gpsState.status = 'error';
-                    coordsEl.textContent = 'Izin GPS ditolak / tidak aktif';
-                    accEl.textContent = 'Aktifkan lokasi HP atau tekan Simulasi';
-                    indEl.className = 'w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0';
-                    console.warn('GPS Error:', err);
+                () => {
+                    showToast('GPS perangkat tidak merespons. Gunakan tombol Simulasi jika di dalam ruangan.', 'info');
                 },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
             );
         }
 
         function simulateGPS() {
-            gpsState.lat = (-6.208763 + (Math.random() - 0.5) * 0.001).toFixed(6);
-            gpsState.lng = (106.845599 + (Math.random() - 0.5) * 0.001).toFixed(6);
-            gpsState.accuracy = 8;
-            gpsState.status = 'simulated';
+            const baseLat = -6.200000 + (Math.random() * 0.01 - 0.005);
+            const baseLng = 106.816666 + (Math.random() * 0.01 - 0.005);
+            gpsState = { lat: baseLat, lng: baseLng, accuracy: 4, status: 'locked' };
             updateGPSUI();
-            showToast('Koordinat GPS simulasi dikunci.', 'info');
-        }
-
-        function updateGPSUI() {
-            const coordsStr = `${gpsState.lat}, ${gpsState.lng}`;
-            document.getElementById('gps-coords-text').textContent = coordsStr;
-            document.getElementById('gps-accuracy-text').textContent =
-                gpsState.status === 'simulated'
-                    ? `Mode Simulasi • Akurasi ±${gpsState.accuracy}m`
-                    : `Terkunci Akurat • ±${gpsState.accuracy} meter`;
-            document.getElementById('gps-indicator').className =
-                'w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0';
-            const modalGps = document.getElementById('modal-live-gps');
-            if (modalGps) modalGps.textContent = `GPS: ${coordsStr}`;
-        }
-
-        function getGPSWatermarkString() {
-            if (gpsState.lat && gpsState.lng) {
-                return `${gpsState.lat}, ${gpsState.lng} (±${gpsState.accuracy}m)`;
-            }
-            return 'GPS Tidak Terkunci';
+            showToast('Koordinat GPS simulasi dikunci.', 'success');
         }
 
         // ==========================================
-        // 5. NAVIGASI & KELOLA SUB-MENU RUANG/GEDUNG & TAHAP WAKTU
+        // 6. SUB-MENU RUANG / GEDUNG & TAHAP WAKTU
         // ==========================================
         function renderRoomTabs() {
             const container = document.getElementById('room-tabs-container');
-            container.innerHTML = '';
-
-            appState.rooms.forEach(room => {
-                const isActive = room.id === appState.activeRoomId;
-                let totalPhotosRoom = 0;
-                let submittedStagesCount = 0;
-
-                STAGE_DEFINITIONS.forEach(st => {
-                    const isSub = isStageSubmitted(appState.reportDate, room.id, st.id);
-                    if (isSub) {
-                        submittedStagesCount++;
-                    } else {
-                        const ph = getPhotosForStage(appState.reportDate, room.id, st.id);
-                        totalPhotosRoom += Object.keys(ph).length;
-                    }
-                });
-
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.onclick = () => switchRoom(room.id);
-                btn.className = isActive
-                    ? 'flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-sm shrink-0 transition'
-                    : 'flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-xs sm:text-sm shrink-0 transition';
-
-                let badgeLabel = `${submittedStagesCount}/3 Tahap • ${totalPhotosRoom} Foto`;
-                let badgeClass = isActive
-                    ? (submittedStagesCount === 3 ? 'bg-emerald-400 text-slate-950' : 'bg-blue-900 text-blue-100')
-                    : (submittedStagesCount === 3 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600');
-
-                if (submittedStagesCount === 3) {
-                    badgeLabel = '3/3 Tahap ✓';
-                }
-
-                btn.innerHTML = `
-                    <span>${room.name}</span>
-                    <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold ${badgeClass}">${badgeLabel}</span>
-                `;
-                container.appendChild(btn);
-            });
-        }
-
-        function renderStageTabs() {
-            const container = document.getElementById('stage-tabs-container');
             if (!container) return;
-            container.innerHTML = '';
+            const dateStr = appState.reportDate;
 
-            const room = getActiveRoom();
-            const totalAngles = getAnglesForRoom(room.id).length;
+            container.innerHTML = appState.rooms.map(room => {
+                const isActive = room.id === appState.activeRoomId;
+                const totalAngles = getAnglesForRoom(room.id).length;
+                const maxTotal = totalAngles * STAGE_DEFINITIONS.length;
+                const doneCount = countTotalCapturedInRoom(dateStr, room.id);
 
-            STAGE_DEFINITIONS.forEach(stage => {
-                const isSelected = stage.id === appState.activeStageId;
-                const isSubmitted = isStageSubmitted(appState.reportDate, room.id, stage.id);
-                const photosMap = getPhotosForStage(appState.reportDate, room.id, stage.id);
-                const count = isSubmitted ? 0 : Object.keys(photosMap).length;
-
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.onclick = () => switchStage(stage.id);
-
-                btn.className = isSelected
-                    ? 'flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-900 text-white font-extrabold text-xs shadow-xs transition'
-                    : 'flex items-center justify-between px-3 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 font-bold text-xs transition';
-
-                let statusChip = '';
-                if (isSubmitted) {
-                    statusChip = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold ${isSelected ? 'bg-emerald-400 text-slate-950' : 'bg-emerald-100 text-emerald-800'}">Tersimpan ✓</span>`;
-                } else {
-                    statusChip = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold ${isSelected ? 'bg-amber-400 text-slate-950' : 'bg-slate-100 text-slate-600'}">${count}/${totalAngles}</span>`;
-                }
-
-                btn.innerHTML = `
-                    <span class="truncate pr-1">${stage.shortTitle}</span>
-                    ${statusChip}
+                return `
+                    <button type="button" onclick="selectRoom('${room.id}')"
+                        class="px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap flex items-center space-x-2 border transition shrink-0 ${
+                            isActive
+                                ? 'bg-blue-700 text-white border-blue-700 shadow-sm'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }">
+                        <span>${escapeHtml(room.name)}</span>
+                        <span class="px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                            isActive ? 'bg-blue-900/70 text-amber-300' : 'bg-slate-100 text-slate-600'
+                        }">${doneCount}/${maxTotal}</span>
+                    </button>
                 `;
-                container.appendChild(btn);
-            });
+            }).join('');
         }
 
-        function switchRoom(roomId) {
+        function selectRoom(roomId) {
             appState.activeRoomId = roomId;
             saveStateToStorage();
             renderRoomTabs();
             renderActiveRoomView();
         }
 
-        function switchStage(stageId) {
+        function selectStage(stageId) {
             appState.activeStageId = stageId;
             saveStateToStorage();
-            renderStageTabs();
             renderActiveRoomView();
         }
 
+        function renderStageTabs(dateStr, roomId) {
+            const container = document.getElementById('stage-tabs-container');
+            if (!container) return;
+            const totalAngles = getAnglesForRoom(roomId).length;
+
+            container.innerHTML = STAGE_DEFINITIONS.map(st => {
+                const isActive = st.id === appState.activeStageId;
+                const done = countCapturedInStage(dateStr, roomId, st.id);
+                const submitted = isRoomStageSubmitted(dateStr, roomId, st.id);
+
+                return `
+                    <button type="button" onclick="selectStage('${st.id}')"
+                        class="px-3 py-2 rounded-lg text-xs font-extrabold flex items-center justify-between border transition ${
+                            isActive
+                                ? 'bg-white text-blue-900 border-blue-600 shadow-xs'
+                                : 'bg-slate-50/70 text-slate-600 border-transparent hover:bg-white'
+                        }">
+                        <span class="truncate">${escapeHtml(st.shortTitle)}</span>
+                        <span class="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                            submitted
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : isActive ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'
+                        }">${submitted ? '✓ Tersimpan' : `${done}/${totalAngles}`}</span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function renderActiveRoomView() {
+            const room = getActiveRoom();
+            const stage = getActiveStage();
+            const dateStr = appState.reportDate;
+            const angles = getAnglesForRoom(room.id);
+            const photos = getRoomStagePhotos(dateStr, room.id, stage.id);
+
+            const doneCount = countCapturedInStage(dateStr, room.id, stage.id);
+            const verifiedCount = countVerifiedInStage(dateStr, room.id, stage.id);
+            const submitted = isRoomStageSubmitted(dateStr, room.id, stage.id);
+
+            document.getElementById('active-room-title').textContent = room.name;
+            document.getElementById('active-stage-pill-badge').textContent = stage.title;
+            document.getElementById('active-room-badge').textContent = `${doneCount}/${angles.length} Foto Selesai`;
+            document.getElementById('active-room-verified-badge').textContent = `• ${verifiedCount} Terverifikasi`;
+            document.getElementById('save-progress-btn-label').textContent = `Simpan Progres ${stage.shortTitle}`;
+
+            const delBtn = document.getElementById('btn-delete-room');
+            if (delBtn) {
+                delBtn.classList.toggle('hidden', appState.rooms.length <= 1);
+            }
+
+            renderStageTabs(dateStr, room.id);
+
+            const noticeEl = document.getElementById('room-submitted-notice');
+            const gridEl = document.getElementById('photo-slots-grid');
+            const saveWrapEl = document.getElementById('save-progress-action-wrap');
+
+            if (submitted) {
+                noticeEl.classList.remove('hidden');
+                gridEl.classList.add('hidden');
+                saveWrapEl.classList.add('hidden');
+                document.getElementById('submitted-notice-title').textContent = `Progres ${stage.shortTitle} (${room.name}) Sudah Tersimpan`;
+                return;
+            }
+
+            noticeEl.classList.add('hidden');
+            gridEl.classList.remove('hidden');
+            saveWrapEl.classList.remove('hidden');
+
+            gridEl.innerHTML = angles.map((ang, idx) => {
+                const entry = photos[ang.id];
+                const hasPhoto = Boolean(entry && entry.dataUrl);
+                const isVerified = hasPhoto && entry.status === 'verified';
+                const isRejected = hasPhoto && entry.status === 'rejected';
+
+                let statusChip = '<span class="px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 text-[10px] font-bold">Kosong</span>';
+                if (isVerified) {
+                    statusChip = '<span class="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">✓ Valid</span>';
+                } else if (isRejected) {
+                    statusChip = '<span class="px-2 py-0.5 rounded-md bg-red-100 text-red-700 text-[10px] font-extrabold">✕ Ulangi</span>';
+                } else if (hasPhoto) {
+                    statusChip = '<span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-[10px] font-extrabold">Menunggu Cek</span>';
+                }
+
+                const driveChip = (hasPhoto && entry.driveUploaded)
+                    ? '<span class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-bold">Drive ✓</span>'
+                    : '';
+
+                return `
+                    <div class="rounded-2xl border ${isVerified ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 bg-slate-50/60'} p-3 flex flex-col justify-between space-y-2.5">
+                        <div class="flex items-start justify-between gap-1.5">
+                            <div class="min-w-0">
+                                <h4 class="text-xs sm:text-sm font-extrabold text-slate-900 leading-snug">${escapeHtml(ang.title)}</h4>
+                                <p class="text-[11px] text-slate-500 line-clamp-2 mt-0.5">${escapeHtml(ang.desc || '')}</p>
+                            </div>
+                            <div class="flex items-center space-x-1 shrink-0">
+                                ${statusChip}
+                                ${ang.isCustom ? `
+                                    <button type="button" onclick="deleteCustomAngle('${ang.id}')"
+                                        class="w-5 h-5 rounded-md bg-red-50 hover:bg-red-100 text-red-600 text-[11px] font-bold flex items-center justify-center"
+                                        title="Hapus Tampak Tambahan">✕</button>
+                                ` : ''}
+                            </div>
+                        </div>
+
+                        <div onclick="openSingleAnglePreview('${dateStr}', '${room.id}', '${stage.id}', ${idx})"
+                            class="relative aspect-4/3 w-full rounded-xl overflow-hidden bg-slate-200/80 border border-slate-300/70 flex items-center justify-center cursor-pointer group">
+                            ${hasPhoto ? `
+                                <img src="${entry.dataUrl}" alt="${escapeHtml(ang.title)}" class="w-full h-full object-cover group-hover:scale-105 transition duration-200">
+                                <div class="absolute top-2 right-2 flex items-center space-x-1">
+                                    ${driveChip}
+                                </div>
+                                <div class="absolute bottom-0 inset-x-0 bg-slate-950/75 px-2.5 py-1 text-[10px] font-mono text-amber-300 truncate">
+                                    ${escapeHtml(entry.timestamp || '')}
+                                </div>
+                            ` : `
+                                <div class="text-center p-3 text-slate-400">
+                                    <svg class="w-7 h-7 mx-auto mb-1 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                    <span class="text-[11px] font-semibold block">Belum ada foto</span>
+                                </div>
+                            `}
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-1.5 pt-0.5">
+                            <button type="button" onclick="openCameraForAngle('${ang.id}')"
+                                class="py-2 px-2.5 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white text-xs font-extrabold rounded-xl flex items-center justify-center space-x-1 transition">
+                                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                                </svg>
+                                <span>${hasPhoto ? 'Ulangi' : 'Ambil Foto'}</span>
+                            </button>
+                            <button type="button" onclick="openSingleAnglePreview('${dateStr}', '${room.id}', '${stage.id}', ${idx})"
+                                class="py-2 px-2.5 bg-amber-100 hover:bg-amber-200 text-amber-950 text-xs font-extrabold rounded-xl flex items-center justify-center space-x-1 transition">
+                                <svg class="w-3.5 h-3.5 text-amber-800 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                                <span>Preview</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function saveTodayProgressForActiveRoom() {
+            const room = getActiveRoom();
+            const stage = getActiveStage();
+            const dateStr = appState.reportDate;
+            const doneCount = countCapturedInStage(dateStr, room.id, stage.id);
+
+            if (doneCount === 0) {
+                showToast('Ambil minimal 1 foto sebelum menyimpan progres tahap ini.', 'error');
+                return;
+            }
+
+            setRoomStageSubmitted(dateStr, room.id, stage.id, true);
+            saveStateToStorage();
+            renderRoomTabs();
+            renderActiveRoomView();
+            showToast(`Progres ${stage.shortTitle} (${room.name}) tersimpan ke Rekap Harian!`, 'success');
+
+            if (appState.driveWebAppUrl && appState.driveAutoUpload !== false) {
+                await uploadStagePhotosToDrive(dateStr, room.id, stage.id, false);
+            }
+        }
+
+        // ==========================================
+        // 7. DIALOG KELOLA RUANG & TAMPAK CUSTOM
+        // ==========================================
         function openAddRoomModal() {
             dialogMode = 'add';
             document.getElementById('room-dialog-title').textContent = 'Tambah Sub-Menu Ruang / Gedung';
             document.getElementById('room-dialog-input-wrap').classList.remove('hidden');
             document.getElementById('room-dialog-desc').classList.add('hidden');
-            document.getElementById('room-dialog-input').value = '';
-            document.getElementById('room-dialog-confirm-btn').className = 'px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl transition';
+            const inp = document.getElementById('room-dialog-input');
+            inp.value = '';
             document.getElementById('room-dialog-confirm-btn').textContent = 'Tambah Ruang';
-            document.getElementById('room-dialog-modal').classList.remove('hidden');
-            document.getElementById('room-dialog-modal').classList.add('flex');
-            setTimeout(() => document.getElementById('room-dialog-input').focus(), 50);
+            const modal = document.getElementById('room-dialog-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => inp.focus(), 50);
         }
 
         function openRenameRoomModal() {
@@ -1188,12 +1394,13 @@
             document.getElementById('room-dialog-title').textContent = 'Ubah Nama Ruang / Gedung';
             document.getElementById('room-dialog-input-wrap').classList.remove('hidden');
             document.getElementById('room-dialog-desc').classList.add('hidden');
-            document.getElementById('room-dialog-input').value = room.name;
-            document.getElementById('room-dialog-confirm-btn').className = 'px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl transition';
+            const inp = document.getElementById('room-dialog-input');
+            inp.value = room.name;
             document.getElementById('room-dialog-confirm-btn').textContent = 'Simpan Nama';
-            document.getElementById('room-dialog-modal').classList.remove('hidden');
-            document.getElementById('room-dialog-modal').classList.add('flex');
-            setTimeout(() => document.getElementById('room-dialog-input').focus(), 50);
+            const modal = document.getElementById('room-dialog-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => inp.focus(), 50);
         }
 
         function openDeleteRoomModal() {
@@ -1203,56 +1410,53 @@
             }
             const room = getActiveRoom();
             dialogMode = 'delete';
-            document.getElementById('room-dialog-title').textContent = 'Hapus Sub-Menu Ruang?';
+            document.getElementById('room-dialog-title').textContent = 'Hapus Sub-Menu Ruang / Gedung?';
             document.getElementById('room-dialog-input-wrap').classList.add('hidden');
-            document.getElementById('room-dialog-desc').classList.remove('hidden');
-            document.getElementById('room-dialog-desc').textContent = `Seluruh foto dokumentasi pada "${room.name}" akan dihapus permanen. Lanjutkan?`;
-            document.getElementById('room-dialog-confirm-btn').className = 'px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition';
+            const desc = document.getElementById('room-dialog-desc');
+            desc.textContent = `Anda yakin ingin menghapus "${room.name}" dari daftar ruang/gedung?`;
+            desc.classList.remove('hidden');
             document.getElementById('room-dialog-confirm-btn').textContent = 'Ya, Hapus';
-            document.getElementById('room-dialog-modal').classList.remove('hidden');
-            document.getElementById('room-dialog-modal').classList.add('flex');
+            const modal = document.getElementById('room-dialog-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
         }
 
         function closeRoomDialog() {
-            document.getElementById('room-dialog-modal').classList.add('hidden');
-            document.getElementById('room-dialog-modal').classList.remove('flex');
+            const modal = document.getElementById('room-dialog-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
         }
 
         function confirmRoomDialog() {
-            const inputVal = document.getElementById('room-dialog-input').value.trim();
-
+            const val = document.getElementById('room-dialog-input').value.trim();
             if (dialogMode === 'add') {
-                if (!inputVal) {
-                    showToast('Nama ruang atau gedung tidak boleh kosong.', 'error');
+                if (!val) {
+                    showToast('Nama ruang/gedung tidak boleh kosong.', 'error');
                     return;
                 }
                 const newId = 'room_' + Date.now();
-                appState.rooms.push({ id: newId, name: inputVal });
+                appState.rooms.push({ id: newId, name: val, customAngles: [] });
                 appState.activeRoomId = newId;
-                showToast(`Sub-menu "${inputVal}" ditambahkan.`, 'success');
+                showToast(`Ruang "${val}" berhasil ditambahkan.`, 'success');
             } else if (dialogMode === 'rename') {
-                if (!inputVal) {
-                    showToast('Nama ruang tidak boleh kosong.', 'error');
+                if (!val) {
+                    showToast('Nama ruang/gedung tidak boleh kosong.', 'error');
                     return;
                 }
                 const room = getActiveRoom();
-                room.name = inputVal;
-                showToast('Nama ruang diperbarui.', 'success');
+                room.name = val;
+                showToast('Nama ruang/gedung diperbarui.', 'success');
             } else if (dialogMode === 'delete') {
-                const deletedId = appState.activeRoomId;
-                appState.rooms = appState.rooms.filter(r => r.id !== deletedId);
-                Object.keys(appState.dailyLogs).forEach(dKey => {
-                    if (appState.dailyLogs[dKey]) delete appState.dailyLogs[dKey][deletedId];
-                });
-                Object.keys(appState.submittedLogs || {}).forEach(dKey => {
-                    if (appState.submittedLogs[dKey]) delete appState.submittedLogs[dKey][deletedId];
-                });
-                appState.activeRoomId = appState.rooms[0].id;
-                showToast('Sub-menu ruang dihapus.', 'info');
+                const idx = appState.rooms.findIndex(r => r.id === appState.activeRoomId);
+                if (idx !== -1 && appState.rooms.length > 1) {
+                    appState.rooms.splice(idx, 1);
+                    appState.activeRoomId = appState.rooms[0].id;
+                    showToast('Ruang/gedung telah dihapus.', 'info');
+                }
             }
-
             closeRoomDialog();
             saveStateToStorage();
+            pushRoomsConfigToDrive(true);
             renderRoomTabs();
             renderActiveRoomView();
         }
@@ -1277,28 +1481,22 @@
         function confirmAddAngleDialog() {
             const rawTitle = document.getElementById('angle-dialog-title').value.trim();
             const rawDesc = document.getElementById('angle-dialog-desc').value.trim();
-
             if (!rawTitle) {
-                showToast('Nama tampak foto tidak boleh kosong.', 'error');
+                showToast('Nama tampak wajib diisi.', 'error');
                 return;
             }
-
             const room = getActiveRoom();
-            if (!Array.isArray(room.customAngles)) {
-                room.customAngles = [];
-            }
-
-            const newAngleId = 'custom_' + Date.now();
+            if (!Array.isArray(room.customAngles)) room.customAngles = [];
             room.customAngles.push({
-                id: newAngleId,
+                id: 'custom_' + Date.now(),
                 title: rawTitle,
                 shortTitle: rawTitle,
-                desc: rawDesc || `Dokumentasi visual khusus untuk ${rawTitle}.`,
+                desc: rawDesc || `Foto sudut tambahan (${rawTitle}).`,
                 isCustom: true
             });
-
             closeAddAngleModal();
             saveStateToStorage();
+            pushRoomsConfigToDrive(true);
             renderRoomTabs();
             renderActiveRoomView();
             showToast(`Tampak "${rawTitle}" ditambahkan ke ${room.name}.`, 'success');
@@ -1306,193 +1504,18 @@
 
         function deleteCustomAngle(angleId) {
             const room = getActiveRoom();
-            if (!room || !Array.isArray(room.customAngles)) return;
-
+            if (!Array.isArray(room.customAngles)) return;
             const target = room.customAngles.find(a => a.id === angleId);
             room.customAngles = room.customAngles.filter(a => a.id !== angleId);
-
-            // Hapus foto yang tersimpan pada tampak custom yang dihapus di seluruh tanggal & tahap
-            Object.keys(appState.dailyLogs || {}).forEach(dKey => {
-                if (appState.dailyLogs[dKey] && appState.dailyLogs[dKey][room.id]) {
-                    STAGE_DEFINITIONS.forEach(st => {
-                        if (appState.dailyLogs[dKey][room.id][st.id]) {
-                            delete appState.dailyLogs[dKey][room.id][st.id][angleId];
-                        }
-                    });
-                }
-            });
-
             saveStateToStorage();
+            pushRoomsConfigToDrive(false);
             renderRoomTabs();
             renderActiveRoomView();
             showToast(`Tampak "${target ? target.shortTitle : ''}" dihapus.`, 'info');
         }
 
         // ==========================================
-        // 6. RENDER KARTU SUDUT FOTO RUANG & TAHAP AKTIF
-        // ==========================================
-        function renderActiveRoomView() {
-            renderStageTabs();
-
-            const room = getActiveRoom();
-            const stage = getActiveStage();
-            const isSubmitted = isStageSubmitted(appState.reportDate, room.id, stage.id);
-            const roomAngles = getAnglesForRoom(room.id);
-            const totalAngles = roomAngles.length;
-            const photosMap = getPhotosForStage(appState.reportDate, room.id, stage.id);
-            const takenCount = isSubmitted ? 0 : roomAngles.filter(a => photosMap[a.id]).length;
-            const verifiedCount = isSubmitted ? 0 : roomAngles.filter(a => photosMap[a.id] && photosMap[a.id].status === 'verified').length;
-
-            document.getElementById('active-room-title').textContent = room.name;
-            document.getElementById('active-stage-pill-badge').textContent = stage.title;
-            document.getElementById('active-room-badge').textContent = isSubmitted
-                ? 'Sudah Disimpan ke Rekap'
-                : `${takenCount}/${totalAngles} Foto Selesai`;
-            document.getElementById('active-room-verified-badge').textContent = isSubmitted
-                ? ''
-                : `• ${verifiedCount} Terverifikasi`;
-
-            const delBtn = document.getElementById('btn-delete-room');
-            delBtn.style.display = appState.rooms.length <= 1 ? 'none' : 'inline-flex';
-
-            const grid = document.getElementById('photo-slots-grid');
-            const submittedNotice = document.getElementById('room-submitted-notice');
-            const saveActionWrap = document.getElementById('save-progress-action-wrap');
-            const headerActions = document.getElementById('active-room-header-actions');
-
-            if (isSubmitted) {
-                grid.innerHTML = '';
-                grid.classList.add('hidden');
-                saveActionWrap.classList.add('hidden');
-                headerActions.classList.add('hidden');
-                document.getElementById('submitted-notice-title').textContent = `Progres "${stage.title}" Sudah Tersimpan ke Rekap`;
-                submittedNotice.classList.remove('hidden');
-                return;
-            }
-
-            grid.classList.remove('hidden');
-            saveActionWrap.classList.remove('hidden');
-            headerActions.classList.remove('hidden');
-            submittedNotice.classList.add('hidden');
-            document.getElementById('save-progress-btn-label').textContent = `Simpan Progres ${stage.shortTitle}`;
-            grid.innerHTML = '';
-
-            roomAngles.forEach(angle => {
-                const savedPhoto = photosMap[angle.id];
-                const card = document.createElement('div');
-                card.className = 'border border-slate-200 rounded-2xl overflow-hidden bg-slate-50 flex flex-col justify-between shadow-2xs';
-
-                let statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-200 text-slate-600">Kosong</span>';
-                if (savedPhoto) {
-                    if (savedPhoto.status === 'verified') {
-                        statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-100 text-emerald-800">✓ Valid</span>';
-                    } else if (savedPhoto.status === 'rejected') {
-                        statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-red-100 text-red-700">✕ Ulangi</span>';
-                    } else {
-                        statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-100 text-amber-800">Perlu Cek</span>';
-                    }
-                }
-
-                const removeCustomBtn = angle.isCustom
-                    ? `<button type="button" onclick="event.stopPropagation(); deleteCustomAngle('${angle.id}')" class="p-1 text-red-500 hover:bg-red-50 rounded-md transition" title="Hapus Tampak Tambahan Ini">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                       </button>`
-                    : '';
-
-                if (savedPhoto) {
-                    card.innerHTML = `
-                        <div>
-                            <div class="px-3 py-2 bg-white border-b border-slate-100 flex items-center justify-between gap-1">
-                                <span class="text-xs font-extrabold text-slate-900 truncate">${angle.title}</span>
-                                <div class="flex items-center space-x-1 shrink-0">
-                                    ${statusBadge}
-                                    ${removeCustomBtn}
-                                </div>
-                            </div>
-                            <div class="relative aspect-4/3 bg-slate-900 overflow-hidden cursor-pointer group" onclick="openPreviewModal('${angle.id}')">
-                                <img src="${savedPhoto.dataUrl}" alt="${angle.title}" class="w-full h-full object-cover group-hover:scale-105 transition duration-200">
-                                <div class="absolute inset-0 bg-black/0 group-hover:bg-black/25 flex items-center justify-center transition">
-                                    <span class="opacity-0 group-hover:opacity-100 px-3 py-1.5 bg-slate-900/90 text-white text-[11px] font-bold rounded-xl shadow">
-                                        Ketuk untuk Preview
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="p-2.5 bg-white border-t border-slate-100 space-y-1.5">
-                            <div class="flex items-center justify-between text-[10px] font-mono text-slate-500">
-                                <span class="truncate">${savedPhoto.timestamp}</span>
-                                ${savedPhoto.driveUploaded
-                                    ? '<span class="px-1.5 py-0.2 bg-blue-50 text-blue-700 font-sans font-bold rounded shrink-0">☁ Drive ✓</span>'
-                                    : ''}
-                            </div>
-                            <div class="grid grid-cols-3 gap-1.5">
-                                <button type="button" onclick="openPreviewModal('${angle.id}')"
-                                    class="py-2 px-2 bg-amber-400 hover:bg-amber-500 text-slate-950 text-[11px] font-extrabold rounded-xl flex items-center justify-center space-x-1 shadow-2xs transition">
-                                    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                                    </svg>
-                                    <span>Preview</span>
-                                </button>
-                                <button type="button" onclick="openCameraForAngle('${angle.id}')"
-                                    class="py-2 px-2 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-xl transition">
-                                    Ulangi
-                                </button>
-                                <button type="button" onclick="downloadSinglePhoto('${angle.id}')"
-                                    class="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold rounded-xl transition">
-                                    Unduh
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    card.innerHTML = `
-                        <div>
-                            <div class="px-3 py-2 bg-white border-b border-slate-100 flex items-center justify-between gap-1">
-                                <span class="text-xs font-extrabold text-slate-900 truncate">${angle.title}</span>
-                                <div class="flex items-center space-x-1 shrink-0">
-                                    ${statusBadge}
-                                    ${removeCustomBtn}
-                                </div>
-                            </div>
-                            <div onclick="openCameraForAngle('${angle.id}')"
-                                class="aspect-4/3 bg-slate-100 hover:bg-blue-50/70 cursor-pointer flex flex-col items-center justify-center p-4 text-center border-b border-dashed border-slate-300 transition">
-                                <div class="w-11 h-11 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center mb-2">
-                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                    </svg>
-                                </div>
-                                <div class="text-xs font-bold text-slate-800">Ambil Foto Langsung</div>
-                                <p class="text-[11px] text-slate-500 mt-0.5 line-clamp-2">${angle.desc}</p>
-                            </div>
-                        </div>
-                        <div class="p-2.5 bg-white grid grid-cols-3 gap-1.5">
-                            <button type="button" onclick="openCameraForAngle('${angle.id}')"
-                                class="col-span-2 py-2.5 px-3 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl shadow-2xs transition">
-                                + Buka Kamera
-                            </button>
-                            <button type="button" onclick="openPreviewModal('${angle.id}')"
-                                class="py-2.5 px-2 bg-amber-100 hover:bg-amber-200 text-amber-950 text-[11px] font-extrabold rounded-xl flex items-center justify-center space-x-1 transition"
-                                title="Preview Tampak Ini">
-                                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                                </svg>
-                                <span>Preview</span>
-                            </button>
-                        </div>
-                    `;
-                }
-
-                grid.appendChild(card);
-            });
-        }
-
-        // ==========================================
-        // 7. KAMERA LANGSUNG & CETAK WATERMARK CANVAS
+        // 8. KAMERA LANGSUNG & WATERMARK OTOMATIS
         // ==========================================
         async function openCameraForAngle(angleId) {
             activeAngleId = angleId;
@@ -1502,8 +1525,7 @@
 
             document.getElementById('modal-room-label').textContent = `${room.name} • ${stage.shortTitle}`;
             document.getElementById('modal-angle-title').textContent = angle ? angle.title : 'Ambil Foto';
-            document.getElementById('modal-live-school').textContent = appState.schoolName;
-            document.getElementById('modal-live-gps').textContent = `GPS: ${getGPSWatermarkString()}`;
+            document.getElementById('modal-live-school').textContent = appState.schoolName.toUpperCase();
 
             const modal = document.getElementById('camera-modal');
             modal.classList.remove('hidden');
@@ -1514,29 +1536,26 @@
 
         async function startCameraStream() {
             stopCameraStream();
-            const video = document.getElementById('camera-video');
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showToast('Gunakan tombol "Kamera HP" di kiri bawah untuk memotret.', 'info');
+                return;
+            }
             try {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    throw new Error('MediaDevices tidak didukung');
-                }
                 mediaStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: { ideal: facingMode },
-                        width: { ideal: 1280 },
-                        height: { ideal: 960 }
-                    },
+                    video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 960 } },
                     audio: false
                 });
+                const video = document.getElementById('camera-video');
                 video.srcObject = mediaStream;
             } catch (err) {
-                console.warn('Kamera web langsung gagal, gunakan tombol Kamera HP:', err);
-                showToast('Gunakan tombol "Kamera HP" di kiri bawah untuk memotret.', 'info');
+                console.warn('Kamera stream gagal:', err);
+                showToast('Izin kamera browser ditolak/tidak tersedia. Gunakan tombol "Kamera HP".', 'info');
             }
         }
 
         function stopCameraStream() {
             if (mediaStream) {
-                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream.getTracks().forEach(t => t.stop());
                 mediaStream = null;
             }
         }
@@ -1555,22 +1574,21 @@
 
         function capturePhotoFromStream() {
             const video = document.getElementById('camera-video');
-            if (!video.videoWidth || !video.videoHeight) {
-                showToast('Kamera belum siap. Silakan gunakan tombol "Kamera HP".', 'error');
+            if (!video || !video.videoWidth) {
+                showToast('Kamera belum siap. Gunakan tombol "Kamera HP" di kiri bawah.', 'error');
                 return;
             }
-            processImageWithWatermark(video, video.videoWidth, video.videoHeight);
+            processAndSaveWatermarkedImage(video, video.videoWidth, video.videoHeight);
         }
 
         function handleFallbackFile(event) {
             const file = event.target.files && event.target.files[0];
             if (!file) return;
-
             const reader = new FileReader();
-            reader.onload = function (e) {
+            reader.onload = (e) => {
                 const img = new Image();
-                img.onload = function () {
-                    processImageWithWatermark(img, img.width, img.height);
+                img.onload = () => {
+                    processAndSaveWatermarkedImage(img, img.naturalWidth, img.naturalHeight);
                 };
                 img.src = e.target.result;
             };
@@ -1578,161 +1596,130 @@
             event.target.value = '';
         }
 
-        function processImageWithWatermark(sourceElement, srcWidth, srcHeight) {
+        function processAndSaveWatermarkedImage(sourceEl, srcWidth, srcHeight) {
             const canvas = document.getElementById('watermark-canvas');
             const ctx = canvas.getContext('2d');
 
-            const maxWidth = 1024;
-            const scale = srcWidth > maxWidth ? maxWidth / srcWidth : 1;
+            const maxW = 1280;
+            const scale = srcWidth > maxW ? maxW / srcWidth : 1;
             const w = Math.round(srcWidth * scale);
             const h = Math.round(srcHeight * scale);
-
             canvas.width = w;
             canvas.height = h;
-            ctx.drawImage(sourceElement, 0, 0, w, h);
+
+            ctx.drawImage(sourceEl, 0, 0, w, h);
 
             const room = getActiveRoom();
             const stage = getActiveStage();
             const angle = getAnglesForRoom(room.id).find(a => a.id === activeAngleId);
-            const ts = getFormattedTimestamp();
-            const gpsText = getGPSWatermarkString();
+            const now = new Date();
+            const dateFormatted = formatDateIndo(appState.reportDate);
+            const timeFormatted = now.toTimeString().split(' ')[0];
+            const timestampStr = `${dateFormatted} ${timeFormatted} WITA/WIB`;
+            const gpsStr = gpsState.lat !== null
+                ? `${gpsState.lat.toFixed(6)}, ${gpsState.lng.toFixed(6)}`
+                : 'GPS Belum Terkunci';
 
-            // Kotak Watermark Permanen di Bawah Foto
-            const barHeight = Math.max(105, Math.round(h * 0.17));
-            const yStart = h - barHeight;
-
+            // Banner Watermark Bawah
+            const bannerH = Math.max(82, Math.round(h * 0.14));
             ctx.fillStyle = 'rgba(15, 23, 42, 0.84)';
-            ctx.fillRect(0, yStart, w, barHeight);
+            ctx.fillRect(0, h - bannerH, w, bannerH);
 
             ctx.fillStyle = '#fbbf24';
-            ctx.fillRect(0, yStart, 8, barHeight);
+            ctx.fillRect(0, h - bannerH, Math.max(8, Math.round(w * 0.008)), bannerH);
 
-            const padX = 20;
-            const fontLarge = Math.max(15, Math.round(w * 0.023));
-            const fontSmall = Math.max(12, Math.round(w * 0.017));
+            const padX = Math.max(18, Math.round(w * 0.02));
+            const fontLarge = Math.max(15, Math.round(bannerH * 0.24));
+            const fontMed = Math.max(12, Math.round(bannerH * 0.19));
+            const fontSmall = Math.max(11, Math.round(bannerH * 0.17));
 
             ctx.fillStyle = '#ffffff';
-            ctx.font = `bold ${fontLarge}px Inter, sans-serif`;
-            ctx.fillText(appState.schoolName.toUpperCase(), padX, yStart + barHeight * 0.27);
+            ctx.font = `800 ${fontLarge}px Inter, sans-serif`;
+            ctx.fillText(appState.schoolName.toUpperCase(), padX, h - bannerH + fontLarge + 6);
 
-            ctx.fillStyle = '#fbbf24';
-            ctx.font = `bold ${fontSmall}px Inter, sans-serif`;
-            ctx.fillText(`${room.name} • [${stage.shortTitle}] • ${angle ? angle.title : ''}`, padX, yStart + barHeight * 0.54);
+            ctx.fillStyle = '#fde68a';
+            ctx.font = `700 ${fontMed}px Inter, sans-serif`;
+            ctx.fillText(`${room.name} | ${stage.shortTitle} | ${angle ? angle.title : ''}`, padX, h - bannerH + fontLarge + fontMed + 12);
 
             ctx.fillStyle = '#cbd5e1';
-            ctx.font = `${fontSmall}px monospace`;
-            ctx.fillText(`Waktu: ${ts.fullStr}  |  GPS: ${gpsText}`, padX, yStart + barHeight * 0.81);
+            ctx.font = `600 ${fontSmall}px monospace`;
+            ctx.fillText(`WAKTU: ${timestampStr}   •   KOORDINAT: ${gpsStr}`, padX, h - 10);
 
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-
-            setPhotoForStage(appState.reportDate, room.id, stage.id, activeAngleId, {
-                dataUrl: dataUrl,
-                timestamp: ts.fullStr,
-                gps: gpsText,
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            const photos = getRoomStagePhotos(appState.reportDate, room.id, stage.id);
+            photos[activeAngleId] = {
+                dataUrl,
+                timestamp: timestampStr,
+                gps: gpsStr,
                 status: 'pending',
-                driveUploaded: false,
-                driveUrl: ''
-            });
+                driveUploaded: false
+            };
 
             saveStateToStorage();
             closeCameraModal();
             renderRoomTabs();
             renderActiveRoomView();
-            showToast(`Foto "${angle ? angle.shortTitle : ''}" (${stage.shortTitle}) tersimpan!`, 'success');
-        }
-
-        function downloadSinglePhoto(angleId, customDate = null, customRoomId = null, customStageId = null) {
-            const targetDate = customDate || appState.reportDate;
-            const targetRoomId = customRoomId || appState.activeRoomId;
-            const targetStageId = customStageId || appState.activeStageId;
-            const room = appState.rooms.find(r => r.id === targetRoomId) || getActiveRoom();
-            const photosMap = getPhotosForStage(targetDate, room.id, targetStageId);
-            const photo = photosMap[angleId];
-            if (!photo) return;
-
-            const link = document.createElement('a');
-            const safeRoom = room.name.replace(/[^a-zA-Z0-9]/g, '_');
-            link.download = `${safeRoom}_${targetStageId}_${angleId}_${targetDate}.jpg`;
-            link.href = photo.dataUrl;
-            link.click();
+            showToast(`Foto "${angle ? angle.shortTitle : ''}" berhasil disimpan!`, 'success');
         }
 
         // ==========================================
-        // 8. MODAL PREVIEW & VERIFIKASI MASING-MASING TAMPAK
+        // 9. PREVIEW & VERIFIKASI FOTO PER TAMPAK
         // ==========================================
-        function openPreviewModal(angleId, customDate = null, customRoomId = null, customStageId = null) {
-            previewDate = customDate || appState.reportDate;
-            previewRoomId = customRoomId || appState.activeRoomId;
-            previewStageId = customStageId || appState.activeStageId;
-            const roomAngles = getAnglesForRoom(previewRoomId);
-            const idx = roomAngles.findIndex(a => a.id === angleId);
-            previewAngleIndex = idx >= 0 ? idx : 0;
+        function openSingleAnglePreview(dateStr, roomId, stageId, angleIdx) {
+            previewDate = dateStr;
+            previewRoomId = roomId;
+            previewStageId = stageId;
+            previewAngleIndex = angleIdx;
             isPreviewZoomed = false;
 
+            renderPreviewModalContent();
             const modal = document.getElementById('preview-modal');
             modal.classList.remove('hidden');
             modal.classList.add('flex');
-            renderPreviewContent();
         }
 
         function closePreviewModal() {
             const modal = document.getElementById('preview-modal');
             modal.classList.add('hidden');
             modal.classList.remove('flex');
-            isPreviewZoomed = false;
         }
 
-        function togglePreviewZoom() {
-            const img = document.getElementById('prev-photo-img');
-            const label = document.getElementById('prev-zoom-label');
-            if (img.classList.contains('hidden')) return;
-
-            isPreviewZoomed = !isPreviewZoomed;
-            if (isPreviewZoomed) {
-                img.className = 'w-[180%] max-w-none object-contain rounded-lg cursor-zoom-out transition-all duration-200';
-                label.textContent = 'Reset Zoom';
-            } else {
-                img.className = 'max-h-full max-w-full object-contain rounded-lg cursor-zoom-in transition-all duration-200';
-                label.textContent = 'Zoom 1.8x';
-            }
-        }
-
-        function renderPreviewContent() {
+        function renderPreviewModalContent() {
             const room = appState.rooms.find(r => r.id === previewRoomId) || getActiveRoom();
             const stage = STAGE_DEFINITIONS.find(s => s.id === previewStageId) || getActiveStage();
-            const roomAngles = getAnglesForRoom(room.id);
-            const angle = roomAngles[previewAngleIndex] || roomAngles[0];
-            const photosMap = getPhotosForStage(previewDate, room.id, stage.id);
-            const photo = photosMap[angle.id];
+            const angles = getAnglesForRoom(room.id);
+            const ang = angles[previewAngleIndex] || angles[0];
+            const photos = getRoomStagePhotos(previewDate, room.id, stage.id);
+            const entry = photos[ang.id];
 
-            document.getElementById('prev-room-label').textContent = `${room.name} • ${stage.shortTitle} (${previewDate})`;
-            document.getElementById('prev-angle-title').textContent = angle.title;
+            document.getElementById('prev-room-label').textContent = `${room.name} • ${stage.shortTitle}`;
+            document.getElementById('prev-angle-title').textContent = ang.title;
 
             const imgEl = document.getElementById('prev-photo-img');
             const emptyEl = document.getElementById('prev-empty-state');
             const badgeEl = document.getElementById('prev-status-badge');
-            const actionWrap = document.getElementById('prev-action-buttons');
+            const actionsEl = document.getElementById('prev-action-buttons');
             const zoomBtn = document.getElementById('prev-zoom-btn');
 
-            imgEl.className = 'max-h-full max-w-full object-contain rounded-lg cursor-zoom-in transition-all duration-200';
-            document.getElementById('prev-zoom-label').textContent = 'Zoom 1.8x';
+            imgEl.style.transform = isPreviewZoomed ? 'scale(1.8)' : 'scale(1)';
+            document.getElementById('prev-zoom-label').textContent = isPreviewZoomed ? 'Reset Zoom' : 'Zoom 1.8x';
 
-            if (photo) {
-                imgEl.src = photo.dataUrl;
+            if (entry && entry.dataUrl) {
+                imgEl.src = entry.dataUrl;
                 imgEl.classList.remove('hidden');
                 emptyEl.classList.add('hidden');
                 emptyEl.classList.remove('flex');
-                actionWrap.classList.remove('hidden');
+                actionsEl.classList.remove('hidden');
                 zoomBtn.classList.remove('hidden');
 
-                document.getElementById('prev-timestamp-text').textContent = `Waktu: ${photo.timestamp}`;
-                document.getElementById('prev-gps-text').textContent = `GPS: ${photo.gps}`;
+                document.getElementById('prev-timestamp-text').textContent = `Waktu: ${entry.timestamp || '-'}`;
+                document.getElementById('prev-gps-text').textContent = `GPS: ${entry.gps || '-'}`;
 
-                if (photo.status === 'verified') {
-                    badgeEl.textContent = '✓ Foto Benar (Valid)';
+                if (entry.status === 'verified') {
+                    badgeEl.textContent = '✓ Foto Benar';
                     badgeEl.className = 'px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-emerald-500 text-white shrink-0';
-                } else if (photo.status === 'rejected') {
-                    badgeEl.textContent = '✕ Foto Salah / Ulangi';
+                } else if (entry.status === 'rejected') {
+                    badgeEl.textContent = '✕ Perlu Ulang';
                     badgeEl.className = 'px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-red-600 text-white shrink-0';
                 } else {
                     badgeEl.textContent = 'Menunggu Cek';
@@ -1742,417 +1729,311 @@
                 imgEl.classList.add('hidden');
                 emptyEl.classList.remove('hidden');
                 emptyEl.classList.add('flex');
-                actionWrap.classList.add('hidden');
+                actionsEl.classList.add('hidden');
                 zoomBtn.classList.add('hidden');
 
-                badgeEl.textContent = 'Belum Difoto';
-                badgeEl.className = 'px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-slate-700 text-slate-300 shrink-0';
+                badgeEl.textContent = 'Belum Ada Foto';
+                badgeEl.className = 'px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-slate-700 text-slate-200 shrink-0';
                 document.getElementById('prev-timestamp-text').textContent = 'Waktu: -';
                 document.getElementById('prev-gps-text').textContent = 'GPS: -';
             }
         }
 
+        function togglePreviewZoom() {
+            isPreviewZoomed = !isPreviewZoomed;
+            const imgEl = document.getElementById('prev-photo-img');
+            imgEl.style.transform = isPreviewZoomed ? 'scale(1.8)' : 'scale(1)';
+            document.getElementById('prev-zoom-label').textContent = isPreviewZoomed ? 'Reset Zoom' : 'Zoom 1.8x';
+        }
+
         function setAngleVerification(status) {
-            const roomAngles = getAnglesForRoom(previewRoomId);
-            const angle = roomAngles[previewAngleIndex];
-            const photosMap = getPhotosForStage(previewDate, previewRoomId, previewStageId);
-            if (!photosMap[angle.id]) return;
-
-            photosMap[angle.id].status = status;
-            saveStateToStorage();
-            renderRoomTabs();
-            renderActiveRoomView();
-            if (activeMainView === 'recap') renderRecapView();
-
-            if (status === 'verified') {
-                showToast(`"${angle.shortTitle}" ditandai BENAR.`, 'success');
-                closePreviewModal();
+            const angles = getAnglesForRoom(previewRoomId);
+            const ang = angles[previewAngleIndex];
+            const photos = getRoomStagePhotos(previewDate, previewRoomId, previewStageId);
+            if (photos[ang.id]) {
+                photos[ang.id].status = status;
+                saveStateToStorage();
+                renderActiveRoomView();
+                if (activeMainView === 'recap') renderRecapView();
+                showToast('Foto ditandai Benar (Valid).', 'success');
             }
+            closePreviewModal();
         }
 
         function markRejectedAndPromptRetake() {
-            const roomAngles = getAnglesForRoom(previewRoomId);
-            const angle = roomAngles[previewAngleIndex];
-            const photosMap = getPhotosForStage(previewDate, previewRoomId, previewStageId);
-            if (photosMap[angle.id]) {
-                photosMap[angle.id].status = 'rejected';
+            const angles = getAnglesForRoom(previewRoomId);
+            const ang = angles[previewAngleIndex];
+            const photos = getRoomStagePhotos(previewDate, previewRoomId, previewStageId);
+            if (photos[ang.id]) {
+                photos[ang.id].status = 'rejected';
                 saveStateToStorage();
             }
-            setStageSubmitted(previewDate, previewRoomId, previewStageId, false);
+            closePreviewModal();
             appState.reportDate = previewDate;
             appState.activeRoomId = previewRoomId;
             appState.activeStageId = previewStageId;
-            document.getElementById('report-date').value = previewDate;
-            saveStateToStorage();
-
-            closePreviewModal();
-            switchMainView('capture');
-            openCameraForAngle(angle.id);
+            setRoomStageSubmitted(previewDate, previewRoomId, previewStageId, false);
+            renderRoomTabs();
+            renderActiveRoomView();
+            openCameraForAngle(ang.id);
         }
 
         function retakeFromPreview() {
-            const roomAngles = getAnglesForRoom(previewRoomId);
-            const angle = roomAngles[previewAngleIndex];
-            setStageSubmitted(previewDate, previewRoomId, previewStageId, false);
+            const angles = getAnglesForRoom(previewRoomId);
+            const ang = angles[previewAngleIndex];
+            closePreviewModal();
             appState.reportDate = previewDate;
             appState.activeRoomId = previewRoomId;
             appState.activeStageId = previewStageId;
-            document.getElementById('report-date').value = previewDate;
-            saveStateToStorage();
-
-            closePreviewModal();
-            switchMainView('capture');
-            openCameraForAngle(angle.id);
+            setRoomStageSubmitted(previewDate, previewRoomId, previewStageId, false);
+            renderRoomTabs();
+            renderActiveRoomView();
+            openCameraForAngle(ang.id);
         }
 
         // ==========================================
-        // 9. MENU REKAP HARIAN (FILTER TANGGAL, RUANG & TAHAP)
+        // 10. REKAP HARIAN (FILTER TANGGAL) & EDIT
         // ==========================================
         function populateRecapRoomFilter() {
-            const select = document.getElementById('recap-filter-room');
-            const currentVal = select.value || 'ALL';
-            select.innerHTML = '<option value="ALL">Semua Ruang / Gedung</option>';
-            appState.rooms.forEach(r => {
-                const opt = document.createElement('option');
-                opt.value = r.id;
-                opt.textContent = r.name;
-                select.appendChild(opt);
-            });
-            select.value = appState.rooms.some(r => r.id === currentVal) ? currentVal : 'ALL';
+            const sel = document.getElementById('recap-filter-room');
+            if (!sel) return;
+            const currentVal = sel.value || 'ALL';
+            sel.innerHTML = `<option value="ALL">Semua Ruang / Gedung</option>` +
+                appState.rooms.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
+            if ([...sel.options].some(o => o.value === currentVal)) {
+                sel.value = currentVal;
+            }
+        }
+
+        function setRecapDateFilter(dateStr) {
+            document.getElementById('recap-filter-date').value = dateStr;
+            renderRecapView();
+        }
+
+        function editSavedStageFromRecap(dateStr, roomId, stageId) {
+            appState.reportDate = dateStr;
+            appState.activeRoomId = roomId;
+            appState.activeStageId = stageId;
+            document.getElementById('report-date').value = dateStr;
+            setRoomStageSubmitted(dateStr, roomId, stageId, false);
+            saveStateToStorage();
+            switchMainView('capture');
+            showToast('Mode Edit aktif. Silakan ubah atau lengkapi foto.', 'info');
         }
 
         function renderRecapView() {
-            const selectedDate = document.getElementById('recap-filter-date').value || appState.reportDate;
-            const selectedRoomFilter = document.getElementById('recap-filter-room').value || 'ALL';
-            const selectedStageFilter = document.getElementById('recap-filter-stage').value || 'ALL';
+            const filterDate = document.getElementById('recap-filter-date').value || appState.reportDate;
+            const filterRoom = document.getElementById('recap-filter-room').value || 'ALL';
+            const filterStage = document.getElementById('recap-filter-stage').value || 'ALL';
 
-            // 1. Render shortcut pil tanggal yang memiliki dokumentasi
-            const datesWrap = document.getElementById('recap-available-dates');
-            datesWrap.innerHTML = '';
-            const allDates = Object.keys(appState.dailyLogs)
-                .filter(d => {
-                    const dayObj = appState.dailyLogs[d];
-                    return dayObj && Object.values(dayObj).some(rm =>
-                        rm && Object.values(rm).some(stObj => stObj && Object.keys(stObj).length > 0)
-                    );
-                })
-                .sort((a, b) => b.localeCompare(a));
-
+            // Render pil tanggal tersedia
+            const datesContainer = document.getElementById('recap-available-dates');
+            const allDates = Object.keys(appState.dailyLogs || {}).sort().reverse();
             if (allDates.length === 0) {
-                datesWrap.innerHTML = '<span class="text-xs text-slate-400 italic">Belum ada arsip foto tersimpan.</span>';
+                datesContainer.innerHTML = `<span class="text-xs text-slate-400 italic">Belum ada riwayat tanggal tersimpan.</span>`;
             } else {
-                allDates.forEach(dStr => {
-                    const isSel = dStr === selectedDate;
-                    const pill = document.createElement('button');
-                    pill.type = 'button';
-                    pill.onclick = () => {
-                        document.getElementById('recap-filter-date').value = dStr;
-                        renderRecapView();
-                    };
-                    pill.className = isSel
-                        ? 'px-3 py-1.5 rounded-xl bg-blue-700 text-white text-xs font-extrabold shrink-0 shadow-2xs transition'
-                        : 'px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold shrink-0 transition';
-                    pill.textContent = formatIndoDate(dStr);
-                    datesWrap.appendChild(pill);
-                });
+                datesContainer.innerHTML = allDates.map(d => {
+                    const active = d === filterDate;
+                    return `
+                        <button type="button" onclick="setRecapDateFilter('${d}')"
+                            class="px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap border transition shrink-0 ${
+                                active ? 'bg-blue-700 text-white border-blue-700' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                            }">
+                            ${formatDateIndo(d)}
+                        </button>
+                    `;
+                }).join('');
             }
 
-            // 2. Hitung statistik dan render daftar rekap per ruang & tahap waktu
-            const resultsList = document.getElementById('recap-results-list');
-            resultsList.innerHTML = '';
+            const targetRooms = filterRoom === 'ALL' ? appState.rooms : appState.rooms.filter(r => r.id === filterRoom);
+            const targetStages = filterStage === 'ALL' ? STAGE_DEFINITIONS : STAGE_DEFINITIONS.filter(s => s.id === filterStage);
 
-            const targetRooms = selectedRoomFilter === 'ALL'
-                ? appState.rooms
-                : appState.rooms.filter(r => r.id === selectedRoomFilter);
-
-            const targetStages = selectedStageFilter === 'ALL'
-                ? STAGE_DEFINITIONS
-                : STAGE_DEFINITIONS.filter(s => s.id === selectedStageFilter);
-
-            let statRoomsSet = new Set();
-            let statPhotos = 0;
-            let statVerified = 0;
+            let documentedRoomsSet = new Set();
+            let totalPhotos = 0;
+            let totalVerified = 0;
+            let cardsHtml = '';
 
             targetRooms.forEach(room => {
-                const roomAngles = getAnglesForRoom(room.id);
-                const totalAngles = roomAngles.length;
-                let stageBlocksHtml = '';
-                let hasAnyPhotoInRoom = false;
+                const angles = getAnglesForRoom(room.id);
+                targetStages.forEach(st => {
+                    const done = countCapturedInStage(filterDate, room.id, st.id);
+                    const submitted = isRoomStageSubmitted(filterDate, room.id, st.id);
+                    if (done === 0 && !submitted) return;
 
-                targetStages.forEach(stage => {
-                    const photosMap = getPhotosForStage(selectedDate, room.id, stage.id);
-                    const takenAngles = roomAngles.filter(a => photosMap[a.id]);
-                    const isSubmitted = isStageSubmitted(selectedDate, room.id, stage.id);
+                    documentedRoomsSet.add(room.id);
+                    totalPhotos += done;
+                    totalVerified += countVerifiedInStage(filterDate, room.id, st.id);
 
-                    if (takenAngles.length > 0 || selectedStageFilter !== 'ALL' || selectedRoomFilter !== 'ALL') {
-                        if (takenAngles.length > 0) {
-                            hasAnyPhotoInRoom = true;
-                            statRoomsSet.add(room.id);
-                        }
-                        statPhotos += takenAngles.length;
-                        statVerified += takenAngles.filter(a => photosMap[a.id].status === 'verified').length;
-
-                        const verifiedInStage = takenAngles.filter(a => photosMap[a.id].status === 'verified').length;
-                        const statusSavedBadge = isSubmitted
-                            ? '<span class="ml-1.5 px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md">Tersimpan</span>'
-                            : '<span class="ml-1.5 px-2 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-extrabold rounded-md">Draft Dasbor</span>';
-
-                        let thumbsHtml = '';
-                        if (takenAngles.length === 0) {
-                            thumbsHtml = '<p class="text-xs text-slate-400 italic py-1.5">Belum ada foto pada tahap waktu ini.</p>';
-                        } else {
-                            const items = takenAngles.map(angle => {
-                                const p = photosMap[angle.id];
-                                const vBadge = p.status === 'verified'
-                                    ? '<span class="px-1.5 py-0.5 bg-emerald-600 text-white text-[9px] font-extrabold rounded">✓ Valid</span>'
-                                    : (p.status === 'rejected'
-                                        ? '<span class="px-1.5 py-0.5 bg-red-600 text-white text-[9px] font-extrabold rounded">✕ Ulangi</span>'
-                                        : '<span class="px-1.5 py-0.5 bg-amber-400 text-slate-950 text-[9px] font-extrabold rounded">Cek</span>');
-
-                                return `
-                                    <div class="border border-slate-200 rounded-xl overflow-hidden bg-white flex flex-col justify-between hover:ring-2 hover:ring-blue-500 transition">
-                                        <div onclick="openPreviewModal('${angle.id}', '${selectedDate}', '${room.id}', '${stage.id}')" class="cursor-pointer">
-                                            <div class="relative aspect-4/3 bg-slate-900">
-                                                <img src="${p.dataUrl}" alt="${angle.title}" class="w-full h-full object-cover">
-                                                <div class="absolute top-1.5 right-1.5">${vBadge}</div>
-                                            </div>
-                                            <div class="p-2 pb-1">
-                                                <div class="text-[11px] font-extrabold text-slate-900 truncate">${angle.shortTitle}</div>
-                                                <div class="text-[10px] font-mono text-slate-500 truncate">${p.timestamp.split(' ')[1] || p.timestamp}</div>
-                                            </div>
-                                        </div>
-                                        <div class="px-2 pb-2">
-                                            <button type="button" onclick="openPreviewModal('${angle.id}', '${selectedDate}', '${room.id}', '${stage.id}')"
-                                                class="w-full py-1.5 px-2 bg-amber-400 hover:bg-amber-500 text-slate-950 text-[10px] font-extrabold rounded-lg flex items-center justify-center space-x-1 transition">
-                                                <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                                                </svg>
-                                                <span>Preview Foto</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                `;
-                            }).join('');
-
-                            thumbsHtml = `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">${items}</div>`;
-                        }
-
-                        stageBlocksHtml += `
-                            <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5">
-                                <div class="flex flex-wrap items-center justify-between gap-2">
-                                    <div>
-                                        <div class="flex items-center flex-wrap">
-                                            <span class="text-xs sm:text-sm font-extrabold text-blue-900">${stage.title}</span>
-                                            ${statusSavedBadge}
-                                        </div>
-                                        <p class="text-[11px] font-semibold text-slate-500 mt-0.5">
-                                            Terambil: <strong class="text-slate-800">${takenAngles.length}/${totalAngles}</strong> foto •
-                                            Terverifikasi: <strong class="text-emerald-700">${verifiedInStage}/${totalAngles}</strong>
-                                        </p>
-                                    </div>
-                                    <div class="flex flex-wrap items-center gap-1.5">
-                                        <button type="button" onclick="editRoomFromRecap('${selectedDate}', '${room.id}', '${stage.id}')"
-                                            class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-[11px] font-extrabold rounded-lg transition">
-                                            Edit Foto
-                                        </button>
-                                        ${takenAngles.length > 0 ? `
-                                            <button type="button" onclick="uploadStagePhotosToDrive('${selectedDate}', '${room.id}', '${stage.id}', false)"
-                                                class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition">
-                                                Upload Drive
-                                            </button>
-                                            <button type="button" onclick="printRoomsForDate('${selectedDate}', ['${room.id}'], '${stage.id}')"
-                                                class="px-2.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-bold rounded-lg transition">
-                                                Cetak Tahap Ini
-                                            </button>
-                                        ` : ''}
-                                    </div>
+                    const photos = getRoomStagePhotos(filterDate, room.id, st.id);
+                    const thumbsHtml = angles.map((ang, idx) => {
+                        const entry = photos[ang.id];
+                        const hasPhoto = Boolean(entry && entry.dataUrl);
+                        return `
+                            <div class="rounded-xl border border-slate-200 bg-white p-2 flex flex-col justify-between space-y-1.5">
+                                <div class="text-[11px] font-extrabold text-slate-800 truncate">${escapeHtml(ang.title)}</div>
+                                <div onclick="openSingleAnglePreview('${filterDate}', '${room.id}', '${st.id}', ${idx})"
+                                    class="aspect-4/3 w-full rounded-lg overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center cursor-pointer">
+                                    ${hasPhoto
+                                        ? `<img src="${entry.dataUrl}" class="w-full h-full object-cover">`
+                                        : `<span class="text-[10px] text-slate-400">Kosong</span>`
+                                    }
                                 </div>
-                                ${thumbsHtml}
+                                <button type="button" onclick="openSingleAnglePreview('${filterDate}', '${room.id}', '${st.id}', ${idx})"
+                                    class="w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-950 text-[11px] font-extrabold rounded-lg transition">
+                                    Preview
+                                </button>
                             </div>
                         `;
-                    }
-                });
+                    }).join('');
 
-                if (hasAnyPhotoInRoom || selectedRoomFilter !== 'ALL') {
-                    const roomCard = document.createElement('div');
-                    roomCard.className = 'border border-slate-200 rounded-2xl p-3.5 sm:p-4 bg-slate-50/90 space-y-3';
-                    roomCard.innerHTML = `
-                        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
-                            <h3 class="text-sm sm:text-base font-extrabold text-slate-900">${room.name}</h3>
-                            ${hasAnyPhotoInRoom ? `
-                                <button type="button" onclick="printRoomsForDate('${selectedDate}', ['${room.id}'], '${selectedStageFilter}')"
-                                    class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition">
-                                    Cetak PDF Ruang Ini
-                                </button>
-                            ` : ''}
-                        </div>
-                        <div class="space-y-3">
-                            ${stageBlocksHtml}
+                    cardsHtml += `
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
+                                <div>
+                                    <div class="flex items-center space-x-2">
+                                        <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-extrabold uppercase">${escapeHtml(st.shortTitle)}</span>
+                                        <span class="px-2 py-0.5 rounded ${submitted ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'} text-[10px] font-extrabold">
+                                            ${submitted ? '✓ Tersimpan' : 'Draft'}
+                                        </span>
+                                    </div>
+                                    <h3 class="text-sm sm:text-base font-extrabold text-slate-900 mt-1">${escapeHtml(room.name)}</h3>
+                                </div>
+                                <div class="flex items-center space-x-1.5">
+                                    <button type="button" onclick="uploadStagePhotosToDrive('${filterDate}', '${room.id}', '${st.id}', true)"
+                                        class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl shadow-xs transition">
+                                        Upload Drive
+                                    </button>
+                                    <button type="button" onclick="editSavedStageFromRecap('${filterDate}', '${room.id}', '${st.id}')"
+                                        class="px-3 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-extrabold rounded-xl shadow-xs transition">
+                                        Edit Foto
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                                ${thumbsHtml}
+                            </div>
                         </div>
                     `;
-                    resultsList.appendChild(roomCard);
-                }
+                });
             });
 
-            document.getElementById('recap-stat-rooms').textContent = statRoomsSet.size;
-            document.getElementById('recap-stat-photos').textContent = statPhotos;
-            document.getElementById('recap-stat-verified').textContent = statVerified;
+            document.getElementById('recap-stat-rooms').textContent = documentedRoomsSet.size;
+            document.getElementById('recap-stat-photos').textContent = totalPhotos;
+            document.getElementById('recap-stat-verified').textContent = totalVerified;
 
-            if (resultsList.children.length === 0) {
-                resultsList.innerHTML = `
-                    <div class="text-center py-10 px-4 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
-                        <p class="text-sm font-bold text-slate-600">Tidak ada dokumentasi foto pada tanggal ${formatIndoDate(selectedDate)}.</p>
-                        <p class="text-xs text-slate-400 mt-1">Pilih tanggal lain pada kalender filter di atas atau mulai ambil foto progres.</p>
+            const listEl = document.getElementById('recap-results-list');
+            if (!cardsHtml) {
+                listEl.innerHTML = `
+                    <div class="text-center py-10 px-4 rounded-2xl border border-dashed border-slate-300 text-slate-500 text-xs sm:text-sm">
+                        Belum ada dokumentasi foto pada tanggal <strong>${formatDateIndo(filterDate)}</strong> untuk filter yang dipilih.
                     </div>
                 `;
+            } else {
+                listEl.innerHTML = cardsHtml;
             }
         }
 
-        function formatIndoDate(isoStr) {
-            if (!isoStr) return '-';
-            const parts = isoStr.split('-');
-            if (parts.length !== 3) return isoStr;
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-            const mIdx = parseInt(parts[1], 10) - 1;
-            return `${parts[2]} ${months[mIdx] || parts[1]} ${parts[0]}`;
-        }
-
         // ==========================================
-        // 10. CETAK / SIMPAN PDF (PER TAHAP WAKTU & RUANG)
+        // 11. CETAK LAPORAN REKAP PDF
         // ==========================================
         function printRecapByFilter() {
-            const selectedDate = document.getElementById('recap-filter-date').value || appState.reportDate;
-            const selectedRoomFilter = document.getElementById('recap-filter-room').value || 'ALL';
-            const selectedStageFilter = document.getElementById('recap-filter-stage').value || 'ALL';
+            const filterDate = document.getElementById('recap-filter-date').value || appState.reportDate;
+            const filterRoom = document.getElementById('recap-filter-room').value || 'ALL';
+            const filterStage = document.getElementById('recap-filter-stage').value || 'ALL';
 
-            const stagesToCheck = selectedStageFilter === 'ALL'
-                ? STAGE_DEFINITIONS
-                : STAGE_DEFINITIONS.filter(s => s.id === selectedStageFilter);
+            const targetRooms = filterRoom === 'ALL' ? appState.rooms : appState.rooms.filter(r => r.id === filterRoom);
+            const targetStages = filterStage === 'ALL' ? STAGE_DEFINITIONS : STAGE_DEFINITIONS.filter(s => s.id === filterStage);
 
-            let roomIdsToPrint = [];
-            if (selectedRoomFilter === 'ALL') {
-                roomIdsToPrint = appState.rooms
-                    .filter(r => stagesToCheck.some(st => Object.keys(getPhotosForStage(selectedDate, r.id, st.id)).length > 0))
-                    .map(r => r.id);
-            } else {
-                roomIdsToPrint = [selectedRoomFilter];
-            }
+            let sectionsHtml = '';
+            targetRooms.forEach(room => {
+                const angles = getAnglesForRoom(room.id);
+                targetStages.forEach(st => {
+                    const done = countCapturedInStage(filterDate, room.id, st.id);
+                    if (done === 0) return;
+                    const photos = getRoomStagePhotos(filterDate, room.id, st.id);
 
-            if (roomIdsToPrint.length === 0) {
-                showToast('Tidak ada foto pada filter tanggal/tahap yang dipilih untuk dicetak.', 'error');
-                return;
-            }
-            printRoomsForDate(selectedDate, roomIdsToPrint, selectedStageFilter);
-        }
-
-        function printRoomsForDate(targetDate, roomIds, stageFilter = 'ALL') {
-            const printSheet = document.getElementById('print-sheet');
-            printSheet.innerHTML = '';
-
-            const formattedDate = formatIndoDate(targetDate);
-            const gpsHeader = getGPSWatermarkString();
-            const stagesToPrint = stageFilter === 'ALL'
-                ? STAGE_DEFINITIONS
-                : STAGE_DEFINITIONS.filter(s => s.id === stageFilter);
-
-            let pageIndex = 0;
-
-            roomIds.forEach(rId => {
-                const room = appState.rooms.find(r => r.id === rId);
-                if (!room) return;
-
-                stagesToPrint.forEach(stage => {
-                    const roomAngles = getAnglesForRoom(room.id);
-                    const photosMap = getPhotosForStage(targetDate, room.id, stage.id);
-                    const takenCount = roomAngles.filter(a => photosMap[a.id]).length;
-                    if (stageFilter === 'ALL' && takenCount === 0) return;
-
-                    const totalAngles = roomAngles.length;
-                    const verifiedCount = roomAngles.filter(a => photosMap[a.id] && photosMap[a.id].status === 'verified').length;
-
-                    const pageSection = document.createElement('div');
-                    pageSection.className = pageIndex > 0 ? 'mt-8 pt-6 border-t-2 border-dashed border-slate-400 break-before-page' : '';
-                    pageIndex++;
-
-                    const gridCardsHtml = roomAngles.map(angle => {
-                        const photo = photosMap[angle.id];
-                        if (photo) {
-                            const statusLabel = photo.status === 'verified'
-                                ? '[✓ VALID]'
-                                : (photo.status === 'rejected' ? '[✕ PERLU ULANG]' : '[BELUM CEK]');
-                            return `
-                                <div class="border border-slate-400 rounded-lg overflow-hidden print-break-inside-avoid">
-                                    <div class="bg-slate-100 px-2.5 py-1.5 border-b border-slate-400 flex items-center justify-between text-[10px] font-bold">
-                                        <span>${angle.title}</span>
-                                        <span>${statusLabel}</span>
-                                    </div>
-                                    <div class="aspect-4/3 bg-slate-50 flex items-center justify-center overflow-hidden">
-                                        <img src="${photo.dataUrl}" alt="${angle.title}" class="w-full h-full object-cover">
-                                    </div>
-                                    <div class="px-2.5 py-1 bg-white border-t border-slate-300 text-[9px] font-mono text-slate-700 flex justify-between">
-                                        <span>${photo.timestamp}</span>
-                                        <span>${photo.gps}</span>
-                                    </div>
-                                </div>
-                            `;
-                        }
+                    const gridItems = angles.map(ang => {
+                        const entry = photos[ang.id];
                         return `
-                            <div class="border border-slate-400 rounded-lg overflow-hidden print-break-inside-avoid">
-                                <div class="bg-slate-100 px-2.5 py-1.5 border-b border-slate-400 flex items-center justify-between text-[10px] font-bold">
-                                    <span>${angle.title}</span>
-                                    <span>[KOSONG]</span>
+                            <div class="border border-slate-400 rounded-lg p-2 print-break-inside-avoid">
+                                <div class="text-[11px] font-bold mb-1">${escapeHtml(ang.title)}</div>
+                                <div class="aspect-4/3 w-full bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-300">
+                                    ${entry && entry.dataUrl
+                                        ? `<img src="${entry.dataUrl}" class="w-full h-full object-cover">`
+                                        : `<span class="text-[10px] text-slate-400">Tidak ada foto</span>`
+                                    }
                                 </div>
-                                <div class="aspect-4/3 bg-slate-50 flex items-center justify-center p-4 text-center text-[10px] text-slate-400 italic">
-                                    Belum ada foto dokumentasi pada sudut ini
+                                <div class="text-[9px] font-mono text-slate-600 mt-1">
+                                    ${entry ? `${escapeHtml(entry.timestamp || '')} • ${escapeHtml(entry.gps || '')}` : '-'}
                                 </div>
                             </div>
                         `;
                     }).join('');
 
-                    pageSection.innerHTML = `
-                        <div class="border-b-2 border-black pb-2.5 mb-3 flex items-end justify-between">
-                            <div>
-                                <div class="text-[10px] font-bold uppercase tracking-widest text-slate-600">Rekap Dokumentasi Visual Progres Revitalisasi Sekolah</div>
-                                <h1 class="text-base font-extrabold uppercase mt-0.5">${appState.schoolName}</h1>
-                                <div class="text-xs font-bold mt-0.5">Ruang / Gedung: <span class="underline">${room.name}</span> • Tahap: <span class="underline">${stage.title}</span></div>
+                    sectionsHtml += `
+                        <div class="mb-6">
+                            <div class="bg-slate-200 px-3 py-1.5 font-bold text-xs uppercase border border-slate-400 mb-2">
+                                ${escapeHtml(room.name)} — ${escapeHtml(st.title)}
                             </div>
-                            <div class="text-right text-[11px]">
-                                <div>Tanggal Dokumentasi: <strong>${formattedDate}</strong></div>
-                                <div class="text-[10px] font-bold mt-0.5">Status: ${takenCount}/${totalAngles} Terambil • ${verifiedCount}/${totalAngles} Terverifikasi Benar</div>
-                                <div class="font-mono text-[10px] text-slate-600 mt-0.5">GPS: ${gpsHeader}</div>
+                            <div class="grid grid-cols-2 gap-3">
+                                ${gridItems}
                             </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-3">
-                            ${gridCardsHtml}
                         </div>
                     `;
-                    printSheet.appendChild(pageSection);
                 });
             });
 
-            if (pageIndex === 0) {
-                showToast('Belum ada foto yang tersimpan untuk dicetak.', 'error');
+            if (!sectionsHtml) {
+                showToast('Tidak ada foto untuk dicetak pada filter tanggal/ruang ini.', 'error');
                 return;
             }
+
+            const printSheet = document.getElementById('print-sheet');
+            printSheet.innerHTML = `
+                <div class="border-b-2 border-black pb-3 mb-4">
+                    <h1 class="text-base font-extrabold uppercase">LAPORAN DOKUMENTASI FOTO PROGRES REVITALISASI</h1>
+                    <div class="text-xs mt-1">
+                        <strong>Satuan Pendidikan:</strong> ${escapeHtml(appState.schoolName)} &nbsp;|&nbsp;
+                        <strong>Tanggal:</strong> ${formatDateIndo(filterDate)}
+                    </div>
+                </div>
+                ${sectionsHtml}
+            `;
 
             window.print();
         }
 
         // ==========================================
-        // 11. JALANKAN APLIKASI SAAT HALAMAN SIAP
+        // 12. HELPER FORMAT & INISIALISASI HALAMAN
         // ==========================================
+        function formatDateIndo(isoDate) {
+            if (!isoDate) return '-';
+            const parts = isoDate.split('-');
+            if (parts.length !== 3) return isoDate;
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+
+        function escapeHtml(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         window.onload = function () {
             loadStateFromStorage();
             document.getElementById('school-name').value = appState.schoolName;
             document.getElementById('report-date').value = appState.reportDate;
-            document.getElementById('recap-filter-date').value = appState.reportDate;
-
             updateDriveStatusUI();
             startLiveClock();
             refreshGPS();
             renderRoomTabs();
             renderActiveRoomView();
+            if (appState.driveWebAppUrl) {
+                pullRoomsConfigFromDrive(false);
+            }
         };
     </script>
 </body>
