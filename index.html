@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Foto Progres Revitalisasi Sekolah - Per Ruang/Gedung</title>
+    <!-- Favicon Browser & Ikon Layar Utama HP (Ganti href="" dengan URL atau nama file logo Anda, misal: logo.png) -->
+    <link rel="icon" type="image/svg+xml" href="https://upload.wikimedia.org/wikipedia/commons/9/9c/Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg">
+    <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/9/9c/Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts: Inter -->
@@ -33,7 +36,7 @@
             animation: slideDown 0.25s ease-out forwards;
         }
 
-        /* Pengaturan Cetak PDF Khusus 6 Foto Ruangan Aktif */
+        /* Pengaturan Cetak PDF Khusus Foto Ruangan Aktif / Rekap */
         @media print {
             @page {
                 size: A4 portrait;
@@ -76,8 +79,14 @@
         <header class="bg-blue-900 text-white sticky top-0 z-30 shadow-md">
             <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
                 <div class="flex items-center space-x-2.5">
-                    <div class="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-sm">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <!-- Ganti nilai src="" di bawah ini dengan URL logo sekolah / Tut Wuri Handayani -->
+                    <div class="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
+                        <img id="app-header-logo"
+                            src="https://upload.wikimedia.org/wikipedia/commons/9/9c/Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg"
+                            alt="Logo Instansi"
+                            onerror="this.style.display='none'; document.getElementById('app-header-logo-fallback').classList.remove('hidden');"
+                            class="w-full h-full object-contain">
+                        <svg id="app-header-logo-fallback" class="hidden w-5 h-5 text-blue-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
                         </svg>
@@ -209,7 +218,7 @@
                 </div>
             </section>
 
-            <!-- 3. AREA KONTEN RUANG AKTIF (HANYA MENU FOTO PROGRES 6 SUDUT) -->
+            <!-- 3. AREA KONTEN RUANG AKTIF (HANYA MENU FOTO PROGRES 7 SUDUT) -->
             <section class="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                 <!-- Header Ruang Aktif -->
                 <div class="border-b border-slate-100 pb-3 flex items-center justify-between gap-2">
@@ -223,7 +232,7 @@
                         <h2 id="active-room-title" class="text-lg sm:text-xl font-extrabold text-slate-900 mt-1 truncate">Gedung A - R. Kelas 1</h2>
                     </div>
 
-                    <!-- Tombol Preview Semua Tampak, Ubah Nama & Hapus Ruang -->
+                    <!-- Tombol Tambah Tampak, Ubah Nama & Hapus Ruang -->
                     <div id="active-room-header-actions" class="flex items-center space-x-1.5 shrink-0">
                         <button type="button" onclick="openAddAngleModal()"
                             class="px-3 py-2 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-800 text-xs font-extrabold rounded-xl flex items-center space-x-1 transition"
@@ -844,7 +853,6 @@
         function getWorkDescription(dateStr, roomId, stageId) {
             if (!appState.workDescriptions) return '';
             if (appState.workDescriptions[dateStr] && appState.workDescriptions[dateStr][roomId]) {
-                // Prioritaskan deskripsi tahap aktif, atau fallback ke deskripsi harian ruang tsb
                 return appState.workDescriptions[dateStr][roomId][stageId]
                     || appState.workDescriptions[dateStr][roomId]._roomDefault
                     || '';
