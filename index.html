@@ -1135,10 +1135,25 @@
         // ==========================================
         // 5. JAM REAL-TIME & GPS GEOLOCATION
         // ==========================================
+        function getIndonesianTimeZoneLabel() {
+            // Deteksi otomatis berdasarkan garis bujur (longitude) titik koordinat GPS
+            if (gpsState.status === 'locked' && typeof gpsState.lng === 'number') {
+                if (gpsState.lng >= 127.5) return 'WIT';
+                if (gpsState.lng >= 114.5) return 'WITA';
+                return 'WIB';
+            }
+            // Fallback berdasarkan offset zona waktu perangkat jika GPS belum terkunci
+            const offsetMinutes = -new Date().getTimezoneOffset();
+            if (offsetMinutes >= 540) return 'WIT';
+            if (offsetMinutes >= 480) return 'WITA';
+            return 'WIB';
+        }
+
         function startLiveClock() {
             const update = () => {
                 const now = new Date();
-                const timeStr = now.toTimeString().split(' ')[0];
+                const tzLabel = getIndonesianTimeZoneLabel();
+                const timeStr = `${now.toTimeString().split(' ')[0]} ${tzLabel}`;
                 const dateStr = now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
                 const clockEl = document.getElementById('live-clock');
                 const dateEl = document.getElementById('live-date-badge');
@@ -1665,7 +1680,8 @@
             const now = new Date();
             const dateFormatted = formatDateIndo(appState.reportDate);
             const timeFormatted = now.toTimeString().split(' ')[0];
-            const timestampStr = `${dateFormatted} ${timeFormatted} WITA/WIB`;
+            const tzLabel = getIndonesianTimeZoneLabel();
+            const timestampStr = `${dateFormatted} ${timeFormatted} ${tzLabel}`;
             const gpsStr = gpsState.lat !== null
                 ? `${gpsState.lat.toFixed(6)}, ${gpsState.lng.toFixed(6)}`
                 : 'GPS Belum Terkunci';
