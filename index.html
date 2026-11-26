@@ -621,6 +621,9 @@
         // ==========================================
         const STORAGE_KEY = 'revitalisasi_foto_ruang_v4';
 
+        // URL WEB APP GOOGLE APPS SCRIPT TERTANAM PERMANEN:
+        const DEFAULT_DRIVE_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwyRO_OddP5Bg7KdsETSkYuZd1YEJkTKNm34DjeY-DAqAlVIGlbtHGLt6DkY_0ALm-eGQ/exec';
+
         const STAGE_DEFINITIONS = [
             { id: 'pagi', title: '1. Sebelum Mulai Kerja (Pagi)', shortTitle: '1. Sebelum Kerja' },
             { id: 'siang', title: '2. Siang Tengah Hari', shortTitle: '2. Siang Hari' },
@@ -658,7 +661,7 @@
             reportDate: new Date().toISOString().split('T')[0],
             activeRoomId: 'room_1',
             activeStageId: 'pagi',
-            driveWebAppUrl: '',
+            driveWebAppUrl: DEFAULT_DRIVE_WEBAPP_URL.startsWith('https://') ? DEFAULT_DRIVE_WEBAPP_URL : '',
             driveAutoUpload: true,
             rooms: [
                 { id: 'room_1', name: 'Gedung A - R. Kelas 1' },
@@ -730,6 +733,9 @@
 
             if (!appState.reportDate) {
                 appState.reportDate = new Date().toISOString().split('T')[0];
+            }
+            if (!appState.driveWebAppUrl && DEFAULT_DRIVE_WEBAPP_URL.startsWith('https://')) {
+                appState.driveWebAppUrl = DEFAULT_DRIVE_WEBAPP_URL;
             }
             if (!appState.rooms.some(r => r.id === appState.activeRoomId)) {
                 appState.activeRoomId = appState.rooms[0].id;
@@ -868,11 +874,11 @@
         }
 
         function clearDriveSettings() {
-            appState.driveWebAppUrl = '';
+            appState.driveWebAppUrl = DEFAULT_DRIVE_WEBAPP_URL.startsWith('https://') ? DEFAULT_DRIVE_WEBAPP_URL : '';
             saveStateToStorage();
             updateDriveStatusUI();
             closeDriveSettingsModal();
-            showToast('Koneksi Google Drive diputuskan.', 'info');
+            showToast(appState.driveWebAppUrl ? 'Kembali menggunakan URL Google Drive bawaan aplikasi.' : 'Koneksi Google Drive diputuskan.', 'info');
         }
 
         function saveDriveSettings() {
@@ -972,48 +978,6 @@
             } catch (err) {
                 console.warn('Gagal mengambil konfigurasi ruang dari Drive:', err);
                 if (showNotif) showToast('Gagal terhubung ke Apps Script. Pastikan deployment baru sudah dibuat.', 'error');
-            }
-        }
-
-        async function pullRoomsConfigFromDrive(showNotif = false) {
-            if (!appState.driveWebAppUrl) {
-                if (showNotif) {
-                    showToast('Masukkan URL Web App di tombol Google Drive terlebih dahulu.', 'error');
-                    openDriveSettingsModal();
-                }
-                return;
-            }
-
-            if (showNotif) showToast('Menyinkronkan daftar ruang dari Google Drive...', 'info');
-
-            try {
-                const res = await fetch(appState.driveWebAppUrl);
-                const data = await res.json();
-                if (data && data.status === 'success' && data.config) {
-                    if (data.config.schoolName) {
-                        appState.schoolName = data.config.schoolName;
-                        document.getElementById('school-name').value = appState.schoolName;
-                    }
-                    if (Array.isArray(data.config.rooms) && data.config.rooms.length > 0) {
-                        appState.rooms = data.config.rooms;
-                        if (!appState.rooms.some(r => r.id === appState.activeRoomId)) {
-                            appState.activeRoomId = appState.rooms[0].id;
-                        }
-                    }
-                    saveStateToStorage();
-                    renderRoomTabs();
-                    renderActiveRoomView();
-                    if (activeMainView === 'recap') {
-                        populateRecapRoomFilter();
-                        renderRecapView();
-                    }
-                    if (showNotif) showToast('Daftar ruang berhasil disinkronkan dari Google Drive!', 'success');
-                } else if (data && data.status === 'empty') {
-                    await pushRoomsConfigToDrive(showNotif);
-                }
-            } catch (err) {
-                console.warn('Gagal mengambil konfigurasi ruang dari Drive:', err);
-                if (showNotif) showToast('Gagal menyinkronkan ruang. Pastikan Apps Script sudah di-deploy versi baru.', 'error');
             }
         }
 
@@ -1952,19 +1916,20 @@
                     if (done === 0) return;
                     const photos = getRoomStagePhotos(filterDate, room.id, st.id);
 
-                    const gridItems = angles.map(ang => {
+                    // Filter hanya sudut tampak yang memiliki foto agar slot kosong tidak ikut tercetak
+                    const capturedAngles = angles.filter(ang => photos[ang.id] && photos[ang.id].dataUrl);
+                    if (capturedAngles.length === 0) return;
+
+                    const gridItems = capturedAngles.map(ang => {
                         const entry = photos[ang.id];
                         return `
                             <div class="border border-slate-400 rounded-lg p-2 print-break-inside-avoid">
                                 <div class="text-[11px] font-bold mb-1">${escapeHtml(ang.title)}</div>
                                 <div class="aspect-4/3 w-full bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-300">
-                                    ${entry && entry.dataUrl
-                                        ? `<img src="${entry.dataUrl}" class="w-full h-full object-cover">`
-                                        : `<span class="text-[10px] text-slate-400">Tidak ada foto</span>`
-                                    }
+                                    <img src="${entry.dataUrl}" class="w-full h-full object-cover">
                                 </div>
                                 <div class="text-[9px] font-mono text-slate-600 mt-1">
-                                    ${entry ? `${escapeHtml(entry.timestamp || '')} • ${escapeHtml(entry.gps || '')}` : '-'}
+                                    ${escapeHtml(entry.timestamp || '')} • ${escapeHtml(entry.gps || '')}
                                 </div>
                             </div>
                         `;
