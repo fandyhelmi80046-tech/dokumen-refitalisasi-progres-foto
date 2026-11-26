@@ -654,7 +654,7 @@
             { id: 'kanan45', title: '4. Tampak 45° Kanan', shortTitle: '45° Kanan', desc: 'Ambil menyerong 45 derajat dari sudut sisi kanan.' },
             { id: 'dalamA', title: '5. Tampak Dalam Sisi A', shortTitle: 'Dalam Sisi A', desc: 'Interior ruangan menghadap dinding depan / papan tulis.' },
             { id: 'dalamB', title: '6. Tampak Dalam Sisi B', shortTitle: 'Dalam Sisi B', desc: 'Interior ruangan menghadap dinding belakang / pintu.' },
-            { id: 'dalamC', title: '7. Tampak Dalam Sisi C / Plafon', shortTitle: 'Dalam Sisi C', desc: 'Detail lantai, struktur kolom, atau rangka atap/plafon.' }
+            { id: 'dalamC', title: '7. Tampak Dalam Sisi C', shortTitle: 'Dalam Sisi C', desc: 'Interior ruangan menghadap sisi samping / struktur ruang.' }
         ];
 
         function getAnglesForRoom(roomId) {
@@ -732,6 +732,7 @@
         }
 
         function loadStateFromStorage() {
+            const todayStr = new Date().toLocaleDateString('en-CA'); // Format YYYY-MM-DD waktu lokal
             try {
                 const raw = localStorage.getItem(STORAGE_KEY);
                 if (raw) {
@@ -740,6 +741,7 @@
                         appState = {
                             ...appState,
                             ...parsed,
+                            reportDate: todayStr, // Selalu otomatis reset ke tanggal hari ini saat dibuka
                             dailyLogs: parsed.dailyLogs || {},
                             workDescriptions: parsed.workDescriptions || {},
                             submittedLogs: parsed.submittedLogs || {}
@@ -750,9 +752,7 @@
                 console.warn('Gagal memuat penyimpanan lokal:', e);
             }
 
-            if (!appState.reportDate) {
-                appState.reportDate = new Date().toISOString().split('T')[0];
-            }
+            appState.reportDate = todayStr;
             if (!appState.driveWebAppUrl && DEFAULT_DRIVE_WEBAPP_URL.startsWith('https://')) {
                 appState.driveWebAppUrl = DEFAULT_DRIVE_WEBAPP_URL;
             }
