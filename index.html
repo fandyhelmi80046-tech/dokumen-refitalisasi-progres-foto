@@ -254,6 +254,23 @@
                     </div>
                 </div>
 
+                <!-- Kolom Deskripsi Pekerjaan / Fokus Dokumentasi Hari Ini -->
+                <div id="work-desc-container" class="bg-blue-50/60 p-3.5 rounded-xl border border-blue-200/80 space-y-1.5">
+                    <div class="flex items-center justify-between gap-2">
+                        <label for="room-work-desc" class="text-[11px] font-extrabold text-blue-950 uppercase tracking-wider flex items-center space-x-1.5">
+                            <svg class="w-3.5 h-3.5 text-blue-700 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            <span>Deskripsi Pekerjaan / Fokus Dokumentasi Hari Ini</span>
+                        </label>
+                        <span class="text-[10px] font-semibold text-blue-700">Tersimpan & Tercetak di PDF</span>
+                    </div>
+                    <textarea id="room-work-desc" rows="2"
+                        oninput="handleWorkDescChange()"
+                        placeholder="Tuliskan item pekerjaan hari ini pada ruang ini (misal: Pemasangan rangka atap baja ringan, plesteran dinding sisi utara, & pengecatan plafon)..."
+                        class="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-xs sm:text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600 transition"></textarea>
+                </div>
+
                 <!-- Banner Status Jika Progres Hari Ini Sudah Disimpan (Terkunci dari Dasbor) -->
                 <div id="room-submitted-notice" class="hidden py-10 px-5 text-center bg-emerald-50/70 rounded-2xl border border-emerald-200 space-y-3">
                     <div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center mx-auto shadow-sm">
@@ -670,6 +687,7 @@
                 { id: 'room_4', name: 'Toilet / MCK' }
             ],
             dailyLogs: {},
+            workDescriptions: {},
             submittedLogs: {}
         };
 
@@ -723,6 +741,7 @@
                             ...appState,
                             ...parsed,
                             dailyLogs: parsed.dailyLogs || {},
+                            workDescriptions: parsed.workDescriptions || {},
                             submittedLogs: parsed.submittedLogs || {}
                         };
                     }
@@ -820,6 +839,32 @@
             if (!appState.submittedLogs[dateStr]) appState.submittedLogs[dateStr] = {};
             if (!appState.submittedLogs[dateStr][roomId]) appState.submittedLogs[dateStr][roomId] = {};
             appState.submittedLogs[dateStr][roomId][stageId] = val;
+        }
+
+        function getWorkDescription(dateStr, roomId, stageId) {
+            if (!appState.workDescriptions) return '';
+            if (appState.workDescriptions[dateStr] && appState.workDescriptions[dateStr][roomId]) {
+                // Prioritaskan deskripsi tahap aktif, atau fallback ke deskripsi harian ruang tsb
+                return appState.workDescriptions[dateStr][roomId][stageId]
+                    || appState.workDescriptions[dateStr][roomId]._roomDefault
+                    || '';
+            }
+            return '';
+        }
+
+        function handleWorkDescChange() {
+            const val = document.getElementById('room-work-desc').value;
+            const dateStr = appState.reportDate;
+            const roomId = appState.activeRoomId;
+            const stageId = appState.activeStageId;
+
+            if (!appState.workDescriptions) appState.workDescriptions = {};
+            if (!appState.workDescriptions[dateStr]) appState.workDescriptions[dateStr] = {};
+            if (!appState.workDescriptions[dateStr][roomId]) appState.workDescriptions[dateStr][roomId] = {};
+
+            appState.workDescriptions[dateStr][roomId][stageId] = val;
+            appState.workDescriptions[dateStr][roomId]._roomDefault = val;
+            saveStateToStorage();
         }
 
         function countCapturedInStage(dateStr, roomId, stageId) {
@@ -962,6 +1007,18 @@
                             appState.activeRoomId = appState.rooms[0].id;
                         }
                     }
+                    if (data.config.workDescriptions && typeof data.config.workDescriptions === 'object') {
+                        appState.workDescriptions = {
+                            ...data.config.workDescriptions,
+                            ...(appState.workDescriptions || {})
+                        };
+                        for (const dKey of Object.keys(data.config.workDescriptions)) {
+                            appState.workDescriptions[dKey] = {
+                                ...data.config.workDescriptions[dKey],
+                                ...(appState.workDescriptions[dKey] || {})
+                            };
+                        }
+                    }
                     saveStateToStorage();
                     renderRoomTabs();
                     renderActiveRoomView();
@@ -994,6 +1051,7 @@
             const stage = STAGE_DEFINITIONS.find(s => s.id === stageId) || { title: 'Tahap_Harian' };
             const angles = getAnglesForRoom(roomId);
             const photos = getRoomStagePhotos(dateStr, roomId, stageId);
+            const workDesc = getWorkDescription(dateStr, roomId, stageId).trim();
 
             const toUpload = angles.filter(a => photos[a.id] && photos[a.id].dataUrl && (!photos[a.id].driveUploaded || isManualTrigger));
             if (toUpload.length === 0) {
@@ -1003,7 +1061,7 @@
                 return;
             }
 
-            showToast(`Mengunggah ${toUpload.length} foto ke Google Drive...`, 'info');
+            showToast(`Mengunggah ${toUpload.length} foto & deskripsi ke Google Drive...`, 'info');
             let successCount = 0;
 
             for (const ang of toUpload) {
@@ -1023,6 +1081,7 @@
                             roomName: room.name,
                             stageTitle: stage.title,
                             angleTitle: ang.title,
+                            workDescription: workDesc,
                             gps: entry.gps || '-',
                             status: entry.status === 'verified' ? 'Terverifikasi' : 'Menunggu Cek',
                             fileName: fileName,
@@ -1038,6 +1097,25 @@
                 } catch (err) {
                     console.warn('Gagal unggah foto ke Drive:', err);
                 }
+            }
+
+            // Sinkronkan juga seluruh arsip deskripsi pekerjaan ke file konfigurasi Drive
+            try {
+                await fetch(appState.driveWebAppUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'saveConfig',
+                        config: {
+                            schoolName: appState.schoolName,
+                            rooms: appState.rooms,
+                            workDescriptions: appState.workDescriptions || {},
+                            updatedAt: new Date().toISOString()
+                        }
+                    })
+                });
+            } catch (err) {
+                console.warn('Gagal sinkronisasi deskripsi ke Drive:', err);
             }
 
             saveStateToStorage();
@@ -1221,11 +1299,18 @@
             const noticeEl = document.getElementById('room-submitted-notice');
             const gridEl = document.getElementById('photo-slots-grid');
             const saveWrapEl = document.getElementById('save-progress-action-wrap');
+            const workDescWrapEl = document.getElementById('work-desc-container');
+            const workDescInputEl = document.getElementById('room-work-desc');
+
+            if (workDescInputEl) {
+                workDescInputEl.value = getWorkDescription(dateStr, room.id, stage.id);
+            }
 
             if (submitted) {
                 noticeEl.classList.remove('hidden');
                 gridEl.classList.add('hidden');
                 saveWrapEl.classList.add('hidden');
+                if (workDescWrapEl) workDescWrapEl.classList.add('hidden');
                 document.getElementById('submitted-notice-title').textContent = `Progres ${stage.shortTitle} (${room.name}) Sudah Tersimpan`;
                 return;
             }
@@ -1233,6 +1318,7 @@
             noticeEl.classList.add('hidden');
             gridEl.classList.remove('hidden');
             saveWrapEl.classList.remove('hidden');
+            if (workDescWrapEl) workDescWrapEl.classList.remove('hidden');
 
             gridEl.innerHTML = angles.map((ang, idx) => {
                 const entry = photos[ang.id];
@@ -1828,6 +1914,7 @@
                     totalPhotos += done;
                     totalVerified += countVerifiedInStage(filterDate, room.id, st.id);
 
+                    const workDesc = getWorkDescription(filterDate, room.id, st.id).trim();
                     const photos = getRoomStagePhotos(filterDate, room.id, st.id);
                     const thumbsHtml = angles.map((ang, idx) => {
                         const entry = photos[ang.id];
@@ -1873,6 +1960,11 @@
                                     </button>
                                 </div>
                             </div>
+                            ${workDesc ? `
+                                <div class="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-xs text-slate-800">
+                                    <span class="font-extrabold text-blue-900">Deskripsi Pekerjaan:</span> ${escapeHtml(workDesc)}
+                                </div>
+                            ` : ''}
                             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                                 ${thumbsHtml}
                             </div>
@@ -1920,6 +2012,8 @@
                     const capturedAngles = angles.filter(ang => photos[ang.id] && photos[ang.id].dataUrl);
                     if (capturedAngles.length === 0) return;
 
+                    const workDesc = getWorkDescription(filterDate, room.id, st.id).trim();
+
                     const gridItems = capturedAngles.map(ang => {
                         const entry = photos[ang.id];
                         return `
@@ -1937,9 +2031,14 @@
 
                     sectionsHtml += `
                         <div class="mb-6">
-                            <div class="bg-slate-200 px-3 py-1.5 font-bold text-xs uppercase border border-slate-400 mb-2">
+                            <div class="bg-slate-200 px-3 py-1.5 font-bold text-xs uppercase border border-slate-400">
                                 ${escapeHtml(room.name)} — ${escapeHtml(st.title)}
                             </div>
+                            ${workDesc ? `
+                                <div class="bg-slate-50 px-3 py-1.5 text-[11px] border-x border-b border-slate-400 mb-2">
+                                    <strong>Deskripsi Pekerjaan:</strong> ${escapeHtml(workDesc)}
+                                </div>
+                            ` : '<div class="mb-2"></div>'}
                             <div class="grid grid-cols-2 gap-3">
                                 ${gridItems}
                             </div>
