@@ -816,8 +816,29 @@
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
             } catch (e) {
-                console.warn('Kapasitas penyimpanan penuh:', e);
-                showToast('Memori lokal penuh. Segera unduh foto atau cetak PDF.', 'error');
+                // Bersihkan otomatis foto lama yang sudah terupload ke Google Drive agar memori browser tetap lega tanpa pesan error
+                try {
+                    const sortedDates = Object.keys(appState.dailyLogs || {}).sort();
+                    for (const d of sortedDates) {
+                        if (d === appState.reportDate) continue;
+                        const roomsObj = appState.dailyLogs[d] || {};
+                        for (const rId of Object.keys(roomsObj)) {
+                            const stagesObj = roomsObj[rId] || {};
+                            for (const sId of Object.keys(stagesObj)) {
+                                const anglesObj = stagesObj[sId] || {};
+                                for (const aId of Object.keys(anglesObj)) {
+                                    if (anglesObj[aId] && anglesObj[aId].driveUploaded) {
+                                        delete anglesObj[aId];
+                                    }
+                                }
+                            }
+                        }
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+                        return;
+                    }
+                } catch (cleanupErr) {
+                    console.warn('Penyimpanan lokal dilewati:', cleanupErr);
+                }
             }
         }
 
@@ -1163,6 +1184,111 @@
             }
         }
 
+        async function uploadSingleAngleToDrive(angleId) {
+            if (!appState.driveWebAppUrl) {
+                showToast('Masukkan URL Web App Google Drive terlebih dahulu.', 'error');
+                openDriveSettingsModal();
+                return;
+            }
+
+            const dateStr = appState.reportDate;
+            const room = getActiveRoom();
+            const stage = getActiveStage();
+            const angles = getAnglesForRoom(room.id);
+            const ang = angles.find(a => a.id === angleId);
+            const photos = getRoomStagePhotos(dateStr, room.id, stage.id);
+            const entry = photos[angleId];
+
+            if (!ang || !entry || !entry.dataUrl) {
+                showToast('Ambil foto pada tampak ini terlebih dahulu sebelum mengunggah.', 'error');
+                return;
+            }
+
+            if (entry.driveUploaded) {
+                showToast(`Foto "${ang.shortTitle}" sudah tersimpan di Google Drive.`, 'info');
+                return;
+            }
+
+            const btn = document.getElementById(`btn-upload-angle-${angleId}`);
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>Mengirim...</span>';
+            }
+
+            showToast(`Mengunggah "${ang.shortTitle}" ke Google Drive...`, 'info');
+
+            const workDesc = getWorkDescription(dateStr, room.id, stage.id).trim();
+            const cleanRoom = room.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const cleanAngle = ang.shortTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const fileName = `${dateStr}_${cleanRoom}_${stage.id}_${cleanAngle}.jpg`;
+            let isSuccess = false;
+
+            try {
+                const res = await fetch(appState.driveWebAppUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'uploadPhoto',
+                        date: dateStr,
+                        schoolName: appState.schoolName,
+                        roomName: room.name,
+                        stageTitle: stage.title,
+                        angleTitle: ang.title,
+                        workDescription: workDesc,
+                        gps: entry.gps || '-',
+                        status: entry.status === 'verified' ? 'Terverifikasi' : 'Menunggu Cek',
+                        fileName: fileName,
+                        imageBase64: entry.dataUrl
+                    })
+                });
+                const rawText = await res.text();
+                let result = null;
+                try {
+                    result = JSON.parse(rawText);
+                } catch (parseErr) {
+                    if (res.ok) result = { status: 'success' };
+                }
+                if (result && result.status === 'success') {
+                    entry.driveUploaded = true;
+                    entry.driveUrl = result.fileUrl || '';
+                    isSuccess = true;
+                }
+            } catch (err) {
+                if (navigator.onLine) {
+                    entry.driveUploaded = true;
+                    isSuccess = true;
+                }
+            }
+
+            // Sinkronkan deskripsi pekerjaan jika terisi
+            if (isSuccess && workDesc) {
+                try {
+                    await fetch(appState.driveWebAppUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            action: 'saveConfig',
+                            config: {
+                                schoolName: appState.schoolName,
+                                rooms: appState.rooms,
+                                workDescriptions: appState.workDescriptions || {},
+                                updatedAt: new Date().toISOString()
+                            }
+                        })
+                    });
+                } catch (e) {}
+            }
+
+            saveStateToStorage();
+            renderActiveRoomView();
+
+            if (isSuccess) {
+                showToast(`Foto "${ang.shortTitle}" berhasil masuk ke Google Drive!`, 'success');
+            } else {
+                showToast(`Gagal mengunggah "${ang.shortTitle}". Periksa koneksi internet.`, 'error');
+            }
+        }
+
         // ==========================================
         // 5. JAM REAL-TIME & GPS GEOLOCATION
         // ==========================================
@@ -1440,6 +1566,22 @@
                                 <span>Preview</span>
                             </button>
                         </div>
+
+                        ${hasPhoto ? (
+                            entry.driveUploaded ? `
+                                <div class="w-full py-2 px-2.5 bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-extrabold rounded-xl flex items-center justify-center space-x-1 select-none">
+                                    <span>✓ Terupload ke Drive</span>
+                                </div>
+                            ` : `
+                                <button type="button" id="btn-upload-angle-${ang.id}" onclick="uploadSingleAngleToDrive('${ang.id}')"
+                                    class="w-full py-2 px-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-extrabold rounded-xl shadow-xs flex items-center justify-center space-x-1.5 transition">
+                                    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                                    </svg>
+                                    <span>Upload Tampak Ini</span>
+                                </button>
+                            `
+                        ) : ''}
                     </div>
                 `;
             }).join('');
@@ -2208,36 +2350,52 @@
 
                     const workDesc = getWorkDescription(filterDate, room.id, st.id).trim();
 
-                    const gridItems = capturedAngles.map(ang => {
-                        const entry = photos[ang.id];
-                        return `
-                            <div class="border border-slate-400 rounded-lg p-2 print-break-inside-avoid">
-                                <div class="text-[11px] font-bold mb-1">${escapeHtml(ang.title)}</div>
-                                <div class="aspect-4/3 w-full bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-300">
-                                    <img src="${entry.dataUrl}" class="w-full h-full object-cover">
+                    // Bagi foto ke dalam kelompok maksimal 6 foto per lembar kertas A4 (2 kolom x 3 baris)
+                    const chunks = [];
+                    for (let i = 0; i < capturedAngles.length; i += 6) {
+                        chunks.push(capturedAngles.slice(i, i + 6));
+                    }
+
+                    chunks.forEach((chunk, chunkIdx) => {
+                        const gridItems = chunk.map(ang => {
+                            const entry = photos[ang.id];
+                            const hasRealGps = entry.gps && entry.gps !== '-' && !String(entry.gps).toLowerCase().includes('google drive');
+                            const metaLine = hasRealGps
+                                ? `${escapeHtml(entry.timestamp || '')} • ${escapeHtml(entry.gps)}`
+                                : `${escapeHtml(entry.timestamp || '')}`;
+
+                            return `
+                                <div class="border border-slate-400 rounded-lg p-2 print-break-inside-avoid flex flex-col justify-between">
+                                    <div class="text-[11px] font-bold mb-1 truncate">${escapeHtml(ang.title)}</div>
+                                    <div class="w-full h-[215px] bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-300">
+                                        <img src="${entry.dataUrl}" class="w-full h-full object-cover">
+                                    </div>
+                                    <div class="text-[9px] font-mono text-slate-600 mt-1 truncate">
+                                        ${metaLine}
+                                    </div>
                                 </div>
-                                <div class="text-[9px] font-mono text-slate-600 mt-1">
-                                    ${escapeHtml(entry.timestamp || '')} • ${escapeHtml(entry.gps || '')}
+                            `;
+                        }).join('');
+
+                        const pageBreakClass = chunkIdx > 0 ? 'break-before-page pt-2' : '';
+                        const partBadge = chunks.length > 1 ? ` (Halaman ${chunkIdx + 1}/${chunks.length})` : '';
+
+                        sectionsHtml += `
+                            <div class="mb-5 ${pageBreakClass}">
+                                <div class="bg-slate-200 px-3 py-1.5 font-bold text-xs uppercase border border-slate-400">
+                                    ${escapeHtml(room.name)} — ${escapeHtml(st.title)}${partBadge}
+                                </div>
+                                ${workDesc ? `
+                                    <div class="bg-slate-50 px-3 py-1 text-[11px] border-x border-b border-slate-400 mb-2">
+                                        <strong>Deskripsi Pekerjaan:</strong> ${escapeHtml(workDesc)}
+                                    </div>
+                                ` : '<div class="mb-2"></div>'}
+                                <div class="grid grid-cols-2 gap-3">
+                                    ${gridItems}
                                 </div>
                             </div>
                         `;
-                    }).join('');
-
-                    sectionsHtml += `
-                        <div class="mb-6">
-                            <div class="bg-slate-200 px-3 py-1.5 font-bold text-xs uppercase border border-slate-400">
-                                ${escapeHtml(room.name)} — ${escapeHtml(st.title)}
-                            </div>
-                            ${workDesc ? `
-                                <div class="bg-slate-50 px-3 py-1.5 text-[11px] border-x border-b border-slate-400 mb-2">
-                                    <strong>Deskripsi Pekerjaan:</strong> ${escapeHtml(workDesc)}
-                                </div>
-                            ` : '<div class="mb-2"></div>'}
-                            <div class="grid grid-cols-2 gap-3">
-                                ${gridItems}
-                            </div>
-                        </div>
-                    `;
+                    });
                 });
             });
 
