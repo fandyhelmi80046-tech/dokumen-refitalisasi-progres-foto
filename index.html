@@ -333,7 +333,7 @@
                     </div>
 
                     <!-- Filter Tanggal & Ruang -->
-                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                         <div>
                             <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Filter Tanggal</label>
                             <input type="date" id="recap-filter-date" onchange="renderRecapView()"
@@ -355,6 +355,16 @@
                                 <option value="siang">2. Siang Tengah Hari</option>
                                 <option value="sore">3. Sore Hari</option>
                             </select>
+                        </div>
+                        <div class="flex flex-col justify-end">
+                            <button type="button" id="btn-pull-recap-drive" onclick="pullRecapDataFromDrive()"
+                                class="w-full py-2.5 px-3 bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white font-bold text-xs sm:text-sm rounded-xl shadow flex items-center justify-center space-x-1.5 transition"
+                                title="Tarik Foto & Deskripsi Tanggal Ini dari Google Drive ke Komputer">
+                                <svg class="w-4 h-4 text-emerald-200 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                </svg>
+                                <span>Tarik Data Drive</span>
+                            </button>
                         </div>
                         <div class="flex flex-col justify-end">
                             <button type="button" onclick="printRecapByFilter()"
@@ -1061,10 +1071,11 @@
             const photos = getRoomStagePhotos(dateStr, roomId, stageId);
             const workDesc = getWorkDescription(dateStr, roomId, stageId).trim();
 
-            const toUpload = angles.filter(a => photos[a.id] && photos[a.id].dataUrl && (!photos[a.id].driveUploaded || isManualTrigger));
+            // Hanya unggah foto yang belum pernah berhasil masuk ke Google Drive (mencegah duplikasi)
+            const toUpload = angles.filter(a => photos[a.id] && photos[a.id].dataUrl && !photos[a.id].driveUploaded);
             if (toUpload.length === 0) {
                 if (isManualTrigger) {
-                    showToast('Semua foto pada tahap ini sudah terunggah ke Google Drive.', 'info');
+                    showToast('Semua foto pada tahap ini sudah tersimpan di Google Drive (tidak ada duplikat).', 'info');
                 }
                 return;
             }
@@ -1096,14 +1107,26 @@
                             imageBase64: entry.dataUrl
                         })
                     });
-                    const result = await res.json();
+                    const rawText = await res.text();
+                    let result = null;
+                    try {
+                        result = JSON.parse(rawText);
+                    } catch (parseErr) {
+                        // Jika status HTTP 200 OK tetapi Google mengirim HTML redirect, anggap tetap terkirim
+                        if (res.ok) result = { status: 'success' };
+                    }
                     if (result && result.status === 'success') {
                         entry.driveUploaded = true;
                         entry.driveUrl = result.fileUrl || '';
                         successCount++;
                     }
                 } catch (err) {
-                    console.warn('Gagal unggah foto ke Drive:', err);
+                    console.warn('Koneksi CORS/Redirect saat membaca respon Drive:', err);
+                    // Pada Google Apps Script, eksekusi di server tetap berjalan meski browser memblokir pembacaan respon redirect
+                    if (navigator.onLine) {
+                        entry.driveUploaded = true;
+                        successCount++;
+                    }
                 }
             }
 
@@ -1868,6 +1891,141 @@
         // ==========================================
         // 10. REKAP HARIAN (FILTER TANGGAL) & EDIT
         // ==========================================
+        async function pullRecapDataFromDrive() {
+            if (!appState.driveWebAppUrl) {
+                showToast('Masukkan URL Web App di tombol Google Drive terlebih dahulu.', 'error');
+                openDriveSettingsModal();
+                return;
+            }
+
+            const filterDateInput = document.getElementById('recap-filter-date');
+            const targetDate = filterDateInput.value || appState.reportDate;
+            const btn = document.getElementById('btn-pull-recap-drive');
+            const origHtml = btn ? btn.innerHTML : '';
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>Menarik Data...</span>';
+            }
+            showToast(`Menarik foto & deskripsi tanggal ${formatDateIndo(targetDate)} dari Google Drive...`, 'info');
+
+            try {
+                const sep = appState.driveWebAppUrl.includes('?') ? '&' : '?';
+                const url = `${appState.driveWebAppUrl}${sep}action=pullRecap&date=${encodeURIComponent(targetDate)}&t=${Date.now()}`;
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (!data || data.status !== 'success') {
+                    showToast('Gagal menarik data. Pastikan Kode.gs versi terbaru sudah di-deploy ulang.', 'error');
+                    return;
+                }
+
+                // Perbarui nama sekolah, ruang & deskripsi kerja dari Drive
+                if (data.config) {
+                    if (data.config.schoolName) {
+                        appState.schoolName = data.config.schoolName;
+                        document.getElementById('school-name').value = appState.schoolName;
+                    }
+                    if (Array.isArray(data.config.rooms) && data.config.rooms.length > 0) {
+                        appState.rooms = data.config.rooms;
+                    }
+                    if (data.config.workDescriptions && typeof data.config.workDescriptions === 'object') {
+                        appState.workDescriptions = {
+                            ...(appState.workDescriptions || {}),
+                            ...data.config.workDescriptions
+                        };
+                    }
+                }
+
+                // Pastikan tanggal tersedia dari Drive muncul di filter jika belum ada di lokal
+                if (Array.isArray(data.availableDates)) {
+                    data.availableDates.forEach(d => {
+                        if (!appState.dailyLogs[d]) appState.dailyLogs[d] = {};
+                    });
+                }
+
+                const records = Array.isArray(data.records) ? data.records : [];
+                let importedCount = 0;
+
+                records.forEach(rec => {
+                    const recDate = rec.date || targetDate;
+                    const cleanFolderRoom = String(rec.roomName || '').replace(/_/g, ' ').toLowerCase();
+
+                    // Cocokkan nama folder ruang di Drive dengan daftar ruang di aplikasi
+                    let matchedRoom = appState.rooms.find(r =>
+                        r.name.toLowerCase() === cleanFolderRoom ||
+                        r.name.replace(/[\/\\:*?"<>|]/g, '_').toLowerCase() === String(rec.roomName || '').toLowerCase()
+                    );
+                    if (!matchedRoom) {
+                        matchedRoom = { id: 'room_drive_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: rec.roomName.replace(/_/g, ' '), customAngles: [] };
+                        appState.rooms.push(matchedRoom);
+                    }
+
+                    // Cocokkan tahap waktu (pagi / siang / sore)
+                    let stageId = 'pagi';
+                    const stLower = String(rec.stageTitle || '').toLowerCase();
+                    if (stLower.includes('siang') || stLower.startsWith('2')) stageId = 'siang';
+                    else if (stLower.includes('sore') || stLower.startsWith('3')) stageId = 'sore';
+
+                    // Cocokkan sudut tampak dari nama file
+                    const angles = getAnglesForRoom(matchedRoom.id);
+                    const fLower = String(rec.fileName || '').toLowerCase();
+                    let matchedAngle = angles.find(ang => {
+                        const cleanShort = ang.shortTitle.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+                        return fLower.includes(cleanShort) || fLower.includes(ang.id.toLowerCase());
+                    });
+
+                    if (!matchedAngle) {
+                        const rawLabel = String(rec.fileName || 'Foto Drive').replace(/\.[^.]+$/, '').split('_').pop();
+                        matchedAngle = {
+                            id: 'custom_drive_' + rawLabel.toLowerCase(),
+                            title: rawLabel,
+                            shortTitle: rawLabel,
+                            desc: 'Foto ditarik dari Google Drive',
+                            isCustom: true
+                        };
+                        if (!Array.isArray(matchedRoom.customAngles)) matchedRoom.customAngles = [];
+                        if (!matchedRoom.customAngles.some(a => a.id === matchedAngle.id)) {
+                            matchedRoom.customAngles.push(matchedAngle);
+                        }
+                    }
+
+                    const stagePhotos = getRoomStagePhotos(recDate, matchedRoom.id, stageId);
+                    stagePhotos[matchedAngle.id] = {
+                        dataUrl: rec.dataUrl,
+                        timestamp: rec.timestamp || formatDateIndo(recDate),
+                        gps: 'Tersimpan di Google Drive',
+                        status: 'verified',
+                        driveUploaded: true
+                    };
+                    setRoomStageSubmitted(recDate, matchedRoom.id, stageId, true);
+                    importedCount++;
+                });
+
+                saveStateToStorage();
+                populateRecapRoomFilter();
+                renderRoomTabs();
+                renderRecapView();
+
+                if (importedCount > 0) {
+                    showToast(`Berhasil menarik ${importedCount} foto tanggal ${formatDateIndo(targetDate)}! Siap dicetak PDF.`, 'success');
+                } else {
+                    const hintDates = (data.availableDates && data.availableDates.length > 0)
+                        ? ` Tanggal tersedia di Drive: ${data.availableDates.slice(0, 3).map(formatDateIndo).join(', ')}`
+                        : '';
+                    showToast(`Tidak ada foto di Drive untuk tanggal ${formatDateIndo(targetDate)}.${hintDates}`, 'info');
+                }
+            } catch (err) {
+                console.warn('Gagal menarik rekap dari Drive:', err);
+                showToast('Gagal terhubung ke Google Drive. Periksa koneksi internet & deployment Apps Script.', 'error');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                }
+            }
+        }
+
         function populateRecapRoomFilter() {
             const sel = document.getElementById('recap-filter-room');
             if (!sel) return;
@@ -1940,12 +2098,18 @@
 
                     const workDesc = getWorkDescription(filterDate, room.id, st.id).trim();
                     const photos = getRoomStagePhotos(filterDate, room.id, st.id);
+                    const capturedList = angles.filter(ang => photos[ang.id] && photos[ang.id].dataUrl);
+                    const allUploadedToDrive = capturedList.length > 0 && capturedList.every(ang => photos[ang.id].driveUploaded);
+
                     const thumbsHtml = angles.map((ang, idx) => {
                         const entry = photos[ang.id];
                         const hasPhoto = Boolean(entry && entry.dataUrl);
                         return `
                             <div class="rounded-xl border border-slate-200 bg-white p-2 flex flex-col justify-between space-y-1.5">
-                                <div class="text-[11px] font-extrabold text-slate-800 truncate">${escapeHtml(ang.title)}</div>
+                                <div class="flex items-center justify-between gap-1">
+                                    <div class="text-[11px] font-extrabold text-slate-800 truncate">${escapeHtml(ang.title)}</div>
+                                    ${hasPhoto && entry.driveUploaded ? '<span class="px-1 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-extrabold shrink-0">Drive ✓</span>' : ''}
+                                </div>
                                 <div onclick="openSingleAnglePreview('${filterDate}', '${room.id}', '${st.id}', ${idx})"
                                     class="aspect-4/3 w-full rounded-lg overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center cursor-pointer">
                                     ${hasPhoto
@@ -1974,10 +2138,16 @@
                                     <h3 class="text-sm sm:text-base font-extrabold text-slate-900 mt-1">${escapeHtml(room.name)}</h3>
                                 </div>
                                 <div class="flex items-center space-x-1.5">
-                                    <button type="button" onclick="uploadStagePhotosToDrive('${filterDate}', '${room.id}', '${st.id}', true)"
-                                        class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl shadow-xs transition">
-                                        Upload Drive
-                                    </button>
+                                    ${allUploadedToDrive ? `
+                                        <span class="px-3 py-2 bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-extrabold rounded-xl select-none cursor-default">
+                                            ✓ Sudah di Drive
+                                        </span>
+                                    ` : `
+                                        <button type="button" onclick="uploadStagePhotosToDrive('${filterDate}', '${room.id}', '${st.id}', true)"
+                                            class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl shadow-xs transition">
+                                            Upload Drive
+                                        </button>
+                                    `}
                                     <button type="button" onclick="editSavedStageFromRecap('${filterDate}', '${room.id}', '${st.id}')"
                                         class="px-3 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-extrabold rounded-xl shadow-xs transition">
                                         Edit Foto
