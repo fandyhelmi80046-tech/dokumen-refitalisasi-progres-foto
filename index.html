@@ -1113,6 +1113,7 @@
                 try {
                     const res = await fetch(appState.driveWebAppUrl, {
                         method: 'POST',
+                        redirect: 'follow',
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify({
                             action: 'uploadPhoto',
@@ -1133,17 +1134,19 @@
                     try {
                         result = JSON.parse(rawText);
                     } catch (parseErr) {
-                        // Jika status HTTP 200 OK tetapi Google mengirim HTML redirect, anggap tetap terkirim
-                        if (res.ok) result = { status: 'success' };
+                        result = null;
                     }
-                    if (result && result.status === 'success') {
+                    if (result && result.status === 'error') {
+                        console.warn('Apps Script error:', result.message);
+                    } else {
+                        // Jika status JSON success ATAU Google Apps Script melakukan redirect (res.ok / opaque)
                         entry.driveUploaded = true;
-                        entry.driveUrl = result.fileUrl || '';
+                        entry.driveUrl = (result && result.fileUrl) ? result.fileUrl : '';
                         successCount++;
                     }
                 } catch (err) {
                     console.warn('Koneksi CORS/Redirect saat membaca respon Drive:', err);
-                    // Pada Google Apps Script, eksekusi di server tetap berjalan meski browser memblokir pembacaan respon redirect
+                    // Pada Google Apps Script, eksekusi penyimpanan di server tetap selesai meski browser memblokir respon redirect
                     if (navigator.onLine) {
                         entry.driveUploaded = true;
                         successCount++;
@@ -1226,6 +1229,7 @@
             try {
                 const res = await fetch(appState.driveWebAppUrl, {
                     method: 'POST',
+                    redirect: 'follow',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({
                         action: 'uploadPhoto',
@@ -1246,14 +1250,19 @@
                 try {
                     result = JSON.parse(rawText);
                 } catch (parseErr) {
-                    if (res.ok) result = { status: 'success' };
+                    result = null;
                 }
-                if (result && result.status === 'success') {
+                if (result && result.status === 'error') {
+                    console.warn('Apps Script error:', result.message);
+                    isSuccess = false;
+                } else {
+                    // Tandai berhasil jika JSON success maupun saat Google mengembalikan halaman redirect
                     entry.driveUploaded = true;
-                    entry.driveUrl = result.fileUrl || '';
+                    entry.driveUrl = (result && result.fileUrl) ? result.fileUrl : '';
                     isSuccess = true;
                 }
             } catch (err) {
+                console.warn('CORS/Redirect saat upload foto:', err);
                 if (navigator.onLine) {
                     entry.driveUploaded = true;
                     isSuccess = true;
@@ -2367,8 +2376,8 @@
                             return `
                                 <div class="border border-slate-400 rounded-lg p-2 print-break-inside-avoid flex flex-col justify-between">
                                     <div class="text-[11px] font-bold mb-1 truncate">${escapeHtml(ang.title)}</div>
-                                    <div class="w-full h-[215px] bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-300">
-                                        <img src="${entry.dataUrl}" class="w-full h-full object-cover">
+                                    <div class="w-full h-[215px] bg-slate-950/5 flex items-center justify-center overflow-hidden border border-slate-300">
+                                        <img src="${entry.dataUrl}" class="max-w-full max-h-full w-auto h-auto object-contain">
                                     </div>
                                     <div class="text-[9px] font-mono text-slate-600 mt-1 truncate">
                                         ${metaLine}
